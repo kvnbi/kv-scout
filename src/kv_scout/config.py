@@ -1,0 +1,272 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field, asdict, is_dataclass
+from typing import Any
+
+
+@dataclass(frozen=True)
+class TokenizerConfig:
+    vocab_size: int = 32768
+    model: str = "byte_level_bpe"
+    byte_fallback: bool = True
+    reflection_slots: int = 32
+    seed_forms: tuple[str, ...] = (
+        "colour",
+        "realise",
+        "centre",
+        "travelled",
+        "defence",
+    )
+    spelling: str = "ise"
+
+    def __post_init__(self) -> None:
+        if self.vocab_size > 65536:
+            raise ValueError("vocab_size must fit in uint16 token shards")
+        if self.spelling not in ("ise", "ize"):
+            raise ValueError("spelling must be one of ise, ize")
+        if self.reflection_slots >= self.vocab_size:
+            raise ValueError("reflection_slots must be smaller than vocab_size")
+
+    @property
+    def reflection_token_ids(self) -> range:
+        return range(self.vocab_size - self.reflection_slots, self.vocab_size)
+
+
+@dataclass(frozen=True)
+class LanguageMix:
+    english: float = 0.95
+    german: float = 0.05
+
+    def __post_init__(self) -> None:
+        total = self.english + self.german
+        if abs(total - 1.0) > 1e-6:
+            raise ValueError("language weights must sum to 1.0")
+
+
+@dataclass(frozen=True)
+class MoEConfig:
+    num_experts: int = 32
+    top_k: int = 2
+    shared_experts: int = 1
+    expert_ffn_hidden: int = 1280
+    shared_ffn_hidden: int = 2560
+    routing: str = "sigmoid"
+    aux_loss_free_balancing: bool = True
+    first_moe_layer: int = 3
+
+    def __post_init__(self) -> None:
+        if self.top_k >= self.num_experts:
+            raise ValueError("top_k must be smaller than num_experts")
+
+
+@dataclass(frozen=True)
+class ModelConfig:
+    d_model: int = 1920
+    n_layers: int = 30
+    dense_warmup_layers: int = 2
+    attention_anchor_layers: tuple[int, ...] = (6, 9, 12, 15, 18, 21, 27, 30)
+    n_query_heads: int = 15
+    n_kv_heads: int = 5
+    head_dim: int = 128
+    context_min: int = 1024
+    context_max: int = 8192
+    tie_embeddings: bool = True
+    mtp_heads: int = 2
+    rope_on_linear_layers: bool = True
+    nope_on_anchor_layers: bool = True
+    cross_layer_kv_sharing: bool = True
+    attention_sinks: bool = True
+    qk_norm: bool = True
+    normalized_value_residual: bool = True
+    layernorm_scaling: bool = True
+    per_head_gated_attention: bool = True
+    precision: str = "bfloat16"
+    tokenizer: TokenizerConfig = field(default_factory=TokenizerConfig)
+    moe: MoEConfig = field(default_factory=MoEConfig)
+    languages: LanguageMix = field(default_factory=LanguageMix)
+
+    def __post_init__(self) -> None:
+        if self.n_query_heads % self.n_kv_heads != 0:
+            raise ValueError("n_query_heads must be divisible by n_kv_heads")
+        if self.n_query_heads * self.head_dim != self.d_model:
+            raise ValueError("n_query_heads times head_dim must equal d_model")
+        if self.dense_warmup_layers >= self.n_layers:
+            raise ValueError("dense_warmup_layers must be smaller than n_layers")
+        if self.context_min > self.context_max:
+            raise ValueError("context_min must not exceed context_max")
+        for layer in self.attention_anchor_layers:
+            if not 1 <= layer <= self.n_layers:
+                raise ValueError("anchor layer index out of range")
+            if layer <= self.dense_warmup_layers:
+                raise ValueError("anchor layers must follow the dense warmup layers")
+        if len(set(self.attention_anchor_layers)) != len(self.attention_anchor_layers):
+            raise ValueError("anchor layer indices must be unique")
+
+    @property
+    def n_anchor_layers(self) -> int:
+        return len(self.attention_anchor_layers)
+
+    @property
+    def n_linear_layers(self) -> int:
+        return self.n_layers - self.dense_warmup_layers - self.n_anchor_layers
+
+    @property
+    def vocab_size(self) -> int:
+        return self.tokenizer.vocab_size
+
+    @property
+    def kv_group_size(self) -> int:
+        return self.n_query_heads // self.n_kv_heads
+
+
+@dataclass(frozen=True)
+class OptimConfig:
+    matrix_optimizer: str = "normuon"
+    vector_optimizer: str = "adamw"
+    newton_schulz_steps: int = 7
+    peak_lr: float = 3e-3
+    min_lr_fraction: float = 0.0
+    weight_decay: float = 0.1
+    cautious_weight_decay: bool = True
+    betas: tuple[float, float] = (0.9, 0.95)
+    eps: float = 1e-8
+    grad_clip: float = 1.0
+    z_loss_weight: float = 1e-4
+    schedule: str = "wsd"
+    warmup_steps: int = 2000
+    stable_fraction_of_peak: float = 0.55
+    decay_fraction: float = 0.20
+    decay_profile: str = "inv_sqrt"
+    ema_decay: float = 0.999
+
+    def __post_init__(self) -> None:
+        if not 0.0 < self.decay_fraction < 1.0:
+            raise ValueError("decay_fraction must lie strictly between 0 and 1")
+        if not 0.0 < self.stable_fraction_of_peak <= 1.0:
+            raise ValueError("stable_fraction_of_peak must lie in (0, 1]")
+        if self.schedule not in ("wsd", "constant"):
+            raise ValueError("schedule must be one of wsd, constant")
+
+
+@dataclass(frozen=True)
+class DataConfig:
+    shard_dir: str = "data/shards"
+    index_name: str = "index.json"
+    seq_len: int = 1024
+    batch_size: int = 8
+    shuffle: bool = True
+    seed: int = 7
+    drop_last: bool = True
+
+    def __post_init__(self) -> None:
+        if self.seq_len < 2:
+            raise ValueError("seq_len must be at least 2")
+        if self.batch_size < 1:
+            raise ValueError("batch_size must be at least 1")
+
+
+@dataclass(frozen=True)
+class TrainConfig:
+    steps: int = 1000
+    checkpoint_every: int = 50
+    log_every: int = 1
+    keep_last_checkpoints: int = 3
+    seed: int = 1234
+    device: str = "auto"
+    dtype: str = "float32"
+    out_dir: str = "runs/default"
+    kill_at: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.steps < 1:
+            raise ValueError("steps must be at least 1")
+        if self.checkpoint_every < 1:
+            raise ValueError("checkpoint_every must be at least 1")
+        if self.keep_last_checkpoints < 1:
+            raise ValueError("keep_last_checkpoints must be at least 1")
+
+
+@dataclass(frozen=True)
+class HarnessModelConfig:
+    vocab_size: int = 2048
+    d_model: int = 288
+    n_layers: int = 5
+    n_heads: int = 9
+    ffn_hidden: int = 672
+    seq_len: int = 256
+    tie_embeddings: bool = True
+    rope_theta: float = 10000.0
+
+    def __post_init__(self) -> None:
+        if self.d_model % self.n_heads != 0:
+            raise ValueError("d_model must be divisible by n_heads")
+        if self.vocab_size > 65536:
+            raise ValueError("vocab_size must fit in uint16 token shards")
+
+    @property
+    def head_dim(self) -> int:
+        return self.d_model // self.n_heads
+
+    @property
+    def param_count(self) -> int:
+        embed = self.vocab_size * self.d_model
+        if not self.tie_embeddings:
+            embed *= 2
+        per_layer = (
+            3 * self.d_model * self.d_model
+            + self.d_model * self.d_model
+            + 3 * self.d_model * self.ffn_hidden
+            + 2 * self.d_model
+        )
+        return embed + self.n_layers * per_layer + self.d_model
+
+
+@dataclass(frozen=True)
+class RunConfig:
+    model: ModelConfig = field(default_factory=ModelConfig)
+    optim: OptimConfig = field(default_factory=OptimConfig)
+    data: DataConfig = field(default_factory=DataConfig)
+    train: TrainConfig = field(default_factory=TrainConfig)
+
+
+@dataclass(frozen=True)
+class HarnessRunConfig:
+    model: HarnessModelConfig = field(default_factory=HarnessModelConfig)
+    optim: OptimConfig = field(
+        default_factory=lambda: OptimConfig(
+            matrix_optimizer="adamw",
+            peak_lr=3e-3,
+            warmup_steps=20,
+            z_loss_weight=0.0,
+        )
+    )
+    data: DataConfig = field(
+        default_factory=lambda: DataConfig(seq_len=256, batch_size=8)
+    )
+    train: TrainConfig = field(
+        default_factory=lambda: TrainConfig(
+            steps=200, checkpoint_every=10, out_dir="runs/harness"
+        )
+    )
+
+
+def to_dict(config: Any) -> Any:
+    if is_dataclass(config):
+        return asdict(config)
+    raise TypeError("to_dict expects a dataclass instance")
+
+
+def from_dict(cls: type, payload: dict) -> Any:
+    kwargs: dict[str, Any] = {}
+    hints = {f.name: f for f in cls.__dataclass_fields__.values()}
+    for name, value in payload.items():
+        if name not in hints:
+            continue
+        target = hints[name].type
+        if isinstance(value, dict) and isinstance(target, type) and is_dataclass(target):
+            kwargs[name] = from_dict(target, value)
+        elif isinstance(value, list):
+            kwargs[name] = tuple(value)
+        else:
+            kwargs[name] = value
+    return cls(**kwargs)

@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kv-scout"
+version = "0.0.1"
+description = "KV Scout: training infrastructure for a grounded agentic small model"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+authors = [{ name = "KV" }]
+dependencies = [
+    "torch>=2.5",
+    "numpy>=1.26",
+    "datasets>=2.19",
+    "tokenizers>=0.19",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+kv-scout-tokenize = "kv_scout.data.tokenize_stream:main"
+kv-scout-train = "kv_scout.train.loop:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
