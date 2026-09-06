@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "requested_bytes": 500000000,
+  "total_bytes": 500031204,
+  "total_docs": 106436,
+  "normalised_dashes": true,
+  "max_doc_bytes": 100000,
+  "shuffle_buffer": 0,
+  "skip_docs": 0,
+  "sources": [
+    {
+      "name": "english_web",
+      "dataset": "HuggingFaceFW/fineweb-edu",
+      "config": "sample-10BT",
+      "split": "train",
+      "text_field": "text",
+      "kind": "english",
+      "weight": 0.4,
+      "file": "english_web.txt",
+      "docs": 41898,
+      "bytes": 200024789,
+      "skip_docs": 0
+    },
+    {
+      "name": "english_synthetic",
+      "dataset": "HuggingFaceTB/smollm-corpus",
+      "config": "cosmopedia-v2",
+      "split": "train",
+      "text_field": "text",
+      "kind": "english",
+      "weight": 0.22,
+      "file": "english_synthetic.txt",
+      "docs": 29457,
+      "bytes": 110003821,
+      "skip_docs": 0
+    },
+    {
+      "name": "code",
+      "dataset": "codeparrot/codeparrot-clean",
+      "config": null,
+      "split": "train",
+      "text_field": "content",
+      "kind": "code",
+      "weight": 0.15,
+      "file": "code.txt",
+      "docs": 7931,
+      "bytes": 75001501,
+      "skip_docs": 0
+    },
+    {
+      "name": "math",
+      "dataset": "HuggingFaceTB/finemath",
+      "config": "finemath-3plus",
+      "split": "train",
+      "text_field": "text",
+      "kind": "english",
+      "weight": 0.15,
+      "file": "math.txt",
+      "docs": 13867,
+      "bytes": 75000696,
+      "skip_docs": 0
+    },
+    {
+      "name": "german",
+      "dataset": "HuggingFaceFW/fineweb-2",
+      "config": "deu_Latn",
+      "split": "train",
+      "text_field": "text",
+      "kind": "german",
+      "weight": 0.08,
+      "file": "german.txt",
+      "docs": 13283,
+      "bytes": 40000397,
+      "skip_docs": 0
+    }
+  ]
+}

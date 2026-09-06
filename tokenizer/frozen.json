@@ -1,0 +1,36 @@
+{
+  "name": "kv-scout-32768",
+  "version": 1,
+  "frozen_on": "2026-09-07",
+  "sha256": "5be1ea99c0a277219754b4e37f1e38faa5fbaee30a8482fad59a08966fa03668",
+  "vocab_size": 32768,
+  "eos_id": 0,
+  "reflection_slots": 32,
+  "structural_tokens": [
+    "<|endoftext|>",
+    "<|system|>",
+    "<|user|>",
+    "<|assistant|>",
+    "<|tool_call|>",
+    "<|tool_result|>",
+    "<|tool_end|>"
+  ],
+  "seeded_british_forms": [
+    " realise",
+    " realised",
+    " organise",
+    " analysed",
+    " licence",
+    " practise",
+    " organised"
+  ],
+  "spelling": "ise",
+  "training_sample_bytes": 500031204,
+  "training_mixture": {
+    "english_web": 0.4,
+    "english_synthetic": 0.22,
+    "code": 0.15,
+    "math": 0.15,
+    "german": 0.08
+  }
+}

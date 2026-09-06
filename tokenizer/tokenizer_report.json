@@ -1,0 +1,51 @@
+{
+  "vocab_size": 32768,
+  "sha256": "5be1ea99c0a277219754b4e37f1e38faa5fbaee30a8482fad59a08966fa03668",
+  "structural_tokens": [
+    "<|endoftext|>",
+    "<|system|>",
+    "<|user|>",
+    "<|assistant|>",
+    "<|tool_call|>",
+    "<|tool_result|>",
+    "<|tool_end|>"
+  ],
+  "reflection_slots": 32,
+  "reflection_tokens": [
+    "[RETRIEVE:yes]",
+    "[RETRIEVE:no]",
+    "[RETRIEVE:continue]",
+    "[REL:yes]",
+    "[REL:partial]",
+    "[REL:no]",
+    "[SUP:full]",
+    "[SUP:partial]",
+    "[SUP:none]",
+    "[USE:1]",
+    "[USE:2]",
+    "[USE:3]",
+    "[USE:4]",
+    "[USE:5]",
+    "[MORE:yes]",
+    "[MORE:no]"
+  ],
+  "eos_id": 0,
+  "seeded_british_forms": [
+    " realise",
+    " realised",
+    " organise",
+    " analysed",
+    " licence",
+    " practise",
+    " organised"
+  ],
+  "padding_tokens": 0,
+  "min_frequency": 2,
+  "training_files": [
+    "data/tokenizer-sample/code.txt",
+    "data/tokenizer-sample/english_synthetic.txt",
+    "data/tokenizer-sample/english_web.txt",
+    "data/tokenizer-sample/german.txt",
+    "data/tokenizer-sample/math.txt"
+  ]
+}

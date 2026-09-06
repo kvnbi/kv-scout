@@ -1,0 +1,167 @@
+{
+  "tokenizer": "data/tokenizer/tokenizer.json",
+  "vocab_size": 32768,
+  "sources": {
+    "code": {
+      "chars": 5000000,
+      "bytes": 5003565,
+      "tokens": 1494147,
+      "chars_per_token": 3.3463909508234466,
+      "bytes_per_token": 3.3487769275713837
+    },
+    "english_synthetic": {
+      "chars": 5000000,
+      "bytes": 5001960,
+      "tokens": 992741,
+      "chars_per_token": 5.036560391884691,
+      "bytes_per_token": 5.03853472355831
+    },
+    "english_web": {
+      "chars": 5000000,
+      "bytes": 5025839,
+      "tokens": 1109691,
+      "chars_per_token": 4.5057588103354895,
+      "bytes_per_token": 4.5290436707155415
+    },
+    "german": {
+      "chars": 1480378,
+      "bytes": 1503012,
+      "tokens": 389147,
+      "chars_per_token": 3.8041614094416762,
+      "bytes_per_token": 3.862324520039985
+    },
+    "math": {
+      "chars": 4446906,
+      "bytes": 4503549,
+      "tokens": 1269923,
+      "chars_per_token": 3.5017130959908593,
+      "bytes_per_token": 3.5463165876986245
+    }
+  },
+  "overall_chars_per_token": 3.9818648467582216,
+  "british": {
+    "pairs": [
+      {
+        "british": "colour",
+        "american": "color",
+        "british_tokens": 1,
+        "american_tokens": 1
+      },
+      {
+        "british": "colours",
+        "american": "colors",
+        "british_tokens": 1,
+        "american_tokens": 1
+      },
+      {
+        "british": "realise",
+        "american": "realize",
+        "british_tokens": 1,
+        "american_tokens": 1
+      },
+      {
+        "british": "realised",
+        "american": "realized",
+        "british_tokens": 1,
+        "american_tokens": 1
+      },
+      {
+        "british": "centre",
+        "american": "center",
+        "british_tokens": 1,
+        "american_tokens": 1
+      },
+      {
+        "british": "centres",
+        "american": "centers",
+        "british_tokens": 1,
+        "american_tokens": 1
+      },
+      {
+        "british": "defence",
+        "american": "defense",
+        "british_tokens": 1,
+        "american_tokens": 1
+      },
+      {
+        "british": "travelled",
+        "american": "traveled",
+        "british_tokens": 1,
+        "american_tokens": 1
+      },
+      {
+        "british": "analyse",
+        "american": "analyze",
+        "british_tokens": 1,
+        "american_tokens": 1
+      },
+      {
+        "british": "analysed",
+        "american": "analyzed",
+        "british_tokens": 1,
+        "american_tokens": 1
+      },
+      {
+        "british": "organise",
+        "american": "organize",
+        "british_tokens": 1,
+        "american_tokens": 1
+      },
+      {
+        "british": "behaviour",
+        "american": "behavior",
+        "british_tokens": 1,
+        "american_tokens": 1
+      },
+      {
+        "british": "favourite",
+        "american": "favorite",
+        "british_tokens": 1,
+        "american_tokens": 1
+      },
+      {
+        "british": "neighbour",
+        "american": "neighbor",
+        "british_tokens": 1,
+        "american_tokens": 1
+      },
+      {
+        "british": "labour",
+        "american": "labor",
+        "british_tokens": 1,
+        "american_tokens": 1
+      },
+      {
+        "british": "licence",
+        "american": "license",
+        "british_tokens": 1,
+        "american_tokens": 1
+      },
+      {
+        "british": "practise",
+        "american": "practice",
+        "british_tokens": 1,
+        "american_tokens": 1
+      },
+      {
+        "british": "programme",
+        "american": "program",
+        "british_tokens": 1,
+        "american_tokens": 1
+      },
+      {
+        "british": "catalogue",
+        "american": "catalog",
+        "british_tokens": 2,
+        "american_tokens": 1
+      },
+      {
+        "british": "apologise",
+        "american": "apologize",
+        "british_tokens": 2,
+        "american_tokens": 2
+      }
+    ],
+    "worse_than_american": 1
+  }
+}

@@ -89,13 +89,30 @@ def _build(files: list[Path], vocab_size: int, min_frequency: int, extra: list[s
     return tokenizer
 
 
-def _missing_british(tokenizer) -> list[str]:
-    vocab = tokenizer.get_vocab()
-    missing = []
-    for form in BRITISH_SEED_FORMS:
-        if "\u0120" + form not in vocab and form not in vocab:
-            missing.append(" " + form)
-    return missing
+def _unseeded_forms(tokenizer) -> list[str]:
+    return [
+        " " + form
+        for form in BRITISH_SEED_FORMS
+        if len(tokenizer.encode(" " + form).ids) != 1
+    ]
+
+
+def _seed(tokenizer, limit: int = 5) -> list[str]:
+    from tokenizers import AddedToken
+
+    seeded: list[str] = []
+    for _ in range(limit):
+        pending = [f for f in _unseeded_forms(tokenizer) if f not in seeded]
+        if not pending:
+            break
+        tokenizer.add_tokens(
+            [AddedToken(f, single_word=False, normalized=False) for f in pending]
+        )
+        seeded.extend(pending)
+    remaining = _unseeded_forms(tokenizer)
+    if remaining:
+        raise ValueError(f"could not seed british forms {remaining}")
+    return seeded
 
 
 def train(
@@ -105,8 +122,6 @@ def train(
     min_frequency: int = 2,
     seed_british: bool = True,
 ) -> dict:
-    from tokenizers import AddedToken
-
     for path in files:
         if not path.exists():
             raise FileNotFoundError(f"missing training file {path}")
@@ -115,15 +130,9 @@ def train(
     tokenizer = _build(files, vocab_size, min_frequency, [])
 
     if seed_british:
-        seeded = _missing_british(tokenizer)
-        if seeded:
-            tokenizer = _build(
-                files, vocab_size - len(seeded), min_frequency, []
-            )
-            seeded = _missing_british(tokenizer)
-            tokenizer.add_tokens(
-                [AddedToken(t, single_word=False, normalized=False) for t in seeded]
-            )
+        budget = vocab_size - len(_seed(tokenizer))
+        tokenizer = _build(files, budget, min_frequency, [])
+        seeded = _seed(tokenizer)
 
     shortfall = vocab_size - tokenizer.get_vocab_size()
     padding = [f"[RESERVED:{REFLECTION_SLOTS + i:02d}]" for i in range(max(0, shortfall))]

@@ -16,7 +16,9 @@ from kv_scout.tokenizer import (
     train,
 )
 
-ARTIFACT = Path("data/tokenizer/tokenizer.json")
+ROOT = Path(__file__).resolve().parents[1] / "tokenizer"
+ARTIFACT = ROOT / "tokenizer.json"
+FROZEN = ROOT / "frozen.json"
 
 
 def test_reserved_slots_match_the_spec():
@@ -60,8 +62,25 @@ def test_train_produces_an_exact_vocabulary(tmp_path):
     assert json.loads((out.parent / "tokenizer_report.json").read_text()) == report
 
 
-@pytest.mark.skipif(not ARTIFACT.exists(), reason="tokenizer not trained yet")
-class TestTrainedArtifact:
+@pytest.mark.skipif(not ARTIFACT.exists(), reason="tokenizer not frozen yet")
+class TestFrozenArtifact:
+    def test_the_file_matches_its_recorded_hash(self):
+        import hashlib
+
+        frozen = json.loads(FROZEN.read_text())
+        actual = hashlib.sha256(ARTIFACT.read_bytes()).hexdigest()
+        assert actual == frozen["sha256"], (
+            "the frozen tokenizer has changed, which every future model in the "
+            "family depends on not happening"
+        )
+
+    def test_frozen_record_matches_the_spec(self):
+        frozen = json.loads(FROZEN.read_text())
+        assert frozen["vocab_size"] == TokenizerConfig().vocab_size
+        assert frozen["reflection_slots"] == REFLECTION_SLOTS
+        assert frozen["spelling"] == TokenizerConfig().spelling
+        assert frozen["structural_tokens"] == list(STRUCTURAL_TOKENS)
+
     @pytest.fixture(scope="class")
     @classmethod
     def tok(cls):

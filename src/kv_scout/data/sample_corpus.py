@@ -31,7 +31,7 @@ DEFAULT_MIXTURE = (
         config="sample-10BT",
         split="train",
         text_field="text",
-        weight=0.35,
+        weight=0.40,
         kind="english",
     ),
     Source(
@@ -40,7 +40,7 @@ DEFAULT_MIXTURE = (
         config="cosmopedia-v2",
         split="train",
         text_field="text",
-        weight=0.20,
+        weight=0.22,
         kind="english",
     ),
     Source(
@@ -49,7 +49,7 @@ DEFAULT_MIXTURE = (
         config=None,
         split="train",
         text_field="content",
-        weight=0.25,
+        weight=0.15,
         kind="code",
     ),
     Source(
@@ -67,7 +67,7 @@ DEFAULT_MIXTURE = (
         config="deu_Latn",
         split="train",
         text_field="text",
-        weight=0.05,
+        weight=0.08,
         kind="german",
     ),
 )
@@ -86,6 +86,7 @@ def sample_source(
     max_doc_bytes: int,
     normalise: bool,
     shuffle_buffer: int,
+    skip_docs: int = 0,
 ) -> dict:
     from datasets import load_dataset
 
@@ -94,6 +95,8 @@ def sample_source(
     )
     if shuffle_buffer > 0:
         stream = stream.shuffle(seed=7, buffer_size=shuffle_buffer)
+    if skip_docs > 0:
+        stream = stream.skip(skip_docs)
 
     written = 0
     docs = 0
@@ -126,6 +129,7 @@ def sample_source(
         "file": out_path.name,
         "docs": docs,
         "bytes": written,
+        "skip_docs": skip_docs,
     }
 
 
@@ -136,6 +140,7 @@ def run(
     max_doc_bytes: int = 100_000,
     normalise: bool = True,
     shuffle_buffer: int = 0,
+    skip_docs: int = 0,
 ) -> dict:
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -150,7 +155,7 @@ def run(
         path = out_dir / f"{source.name}.txt"
         print(f"sampling {source.name} to {target} bytes", file=sys.stderr, flush=True)
         entry = sample_source(
-            source, path, target, max_doc_bytes, normalise, shuffle_buffer
+            source, path, target, max_doc_bytes, normalise, shuffle_buffer, skip_docs
         )
         print(
             f"  {entry['docs']} docs, {entry['bytes']} bytes",
@@ -167,6 +172,7 @@ def run(
         "normalised_dashes": normalise,
         "max_doc_bytes": max_doc_bytes,
         "shuffle_buffer": shuffle_buffer,
+        "skip_docs": skip_docs,
         "sources": entries,
     }
     path = out_dir / "manifest.json"
@@ -182,6 +188,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--total-bytes", type=int, default=500_000_000)
     parser.add_argument("--max-doc-bytes", type=int, default=100_000)
     parser.add_argument("--shuffle-buffer", type=int, default=0)
+    parser.add_argument("--skip-docs", type=int, default=0)
     parser.add_argument("--keep-dashes", action="store_true")
     args = parser.parse_args(argv)
 
@@ -191,6 +198,7 @@ def main(argv: list[str] | None = None) -> int:
         max_doc_bytes=args.max_doc_bytes,
         normalise=not args.keep_dashes,
         shuffle_buffer=args.shuffle_buffer,
+        skip_docs=args.skip_docs,
     )
     print(
         f"wrote {manifest['total_bytes']} bytes across "
