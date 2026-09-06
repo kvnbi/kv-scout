@@ -7,7 +7,7 @@ dist/
 .venv/
 venv/
 
-data/shards/
+data/
 runs/
 *.bin
 *.pt
