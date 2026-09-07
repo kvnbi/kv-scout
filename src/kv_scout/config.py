@@ -80,6 +80,11 @@ class ModelConfig:
     normalized_value_residual: bool = True
     layernorm_scaling: bool = True
     per_head_gated_attention: bool = True
+    use_gdn: bool = True
+    use_moe: bool = True
+    dense_ffn_hidden: int = 5120
+    rope_theta: float = 10000.0
+    norm_eps: float = 1e-6
     precision: str = "bfloat16"
     tokenizer: TokenizerConfig = field(default_factory=TokenizerConfig)
     moe: MoEConfig = field(default_factory=MoEConfig)
@@ -117,6 +122,88 @@ class ModelConfig:
     @property
     def kv_group_size(self) -> int:
         return self.n_query_heads // self.n_kv_heads
+
+    @property
+    def linear_to_anchor_ratio(self) -> float:
+        if self.n_anchor_layers == 0:
+            return float("inf")
+        return self.n_linear_layers / self.n_anchor_layers
+
+    def layer_kind(self, layer: int) -> str:
+        if not 1 <= layer <= self.n_layers:
+            raise ValueError("layer index out of range")
+        if layer <= self.dense_warmup_layers:
+            return "dense"
+        if layer in self.attention_anchor_layers:
+            return "anchor"
+        return "linear" if self.use_gdn else "attention"
+
+    def ffn_hidden(self, layer: int) -> int:
+        if self.layer_kind(layer) == "dense" or not self.use_moe:
+            return self.dense_ffn_hidden
+        return self.moe.expert_ffn_hidden
+
+    def parameter_estimate(self) -> int:
+        d = self.d_model
+        embed = self.vocab_size * d
+        if not self.tie_embeddings:
+            embed *= 2
+        total = embed + d
+        for layer in range(1, self.n_layers + 1):
+            kv = self.n_kv_heads * self.head_dim
+            attention = d * d + 2 * d * kv + d * d
+            if self.layer_kind(layer) == "dense" or not self.use_moe:
+                ffn = 3 * d * self.ffn_hidden(layer)
+            else:
+                experts = self.moe.num_experts * 3 * d * self.moe.expert_ffn_hidden
+                shared = self.moe.shared_experts * 3 * d * self.moe.shared_ffn_hidden
+                ffn = experts + shared + d * self.moe.num_experts
+            total += attention + ffn + 2 * d
+        return total
+
+    def active_parameter_estimate(self) -> int:
+        if not self.use_moe:
+            return self.parameter_estimate()
+        d = self.d_model
+        idle = 0
+        for layer in range(1, self.n_layers + 1):
+            if self.layer_kind(layer) == "dense":
+                continue
+            skipped = self.moe.num_experts - self.moe.top_k
+            idle += skipped * 3 * d * self.moe.expert_ffn_hidden
+        return self.parameter_estimate() - idle
+
+
+PROXY_ANCHORS = (6, 9, 12)
+
+
+def proxy_config(**overrides) -> ModelConfig:
+    base = dict(
+        d_model=576,
+        n_layers=12,
+        dense_warmup_layers=2,
+        attention_anchor_layers=PROXY_ANCHORS,
+        n_query_heads=6,
+        n_kv_heads=2,
+        head_dim=96,
+        context_min=1024,
+        context_max=1024,
+        dense_ffn_hidden=1536,
+        use_gdn=False,
+        use_moe=False,
+        nope_on_anchor_layers=False,
+        cross_layer_kv_sharing=False,
+        attention_sinks=False,
+        qk_norm=False,
+        normalized_value_residual=False,
+        layernorm_scaling=False,
+        per_head_gated_attention=False,
+        mtp_heads=0,
+        precision="float32",
+        moe=MoEConfig(expert_ffn_hidden=384, shared_ffn_hidden=768),
+    )
+    base.update(overrides)
+    return ModelConfig(**base)
 
 
 @dataclass(frozen=True)
