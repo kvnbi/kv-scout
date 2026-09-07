@@ -100,3 +100,26 @@ def test_interleave_ratio_is_close_to_the_spec_target():
 def test_moe_config_validation():
     with pytest.raises(ValueError):
         MoEConfig(num_experts=2, top_k=2)
+
+
+def test_config_round_trips_through_a_checkpoint_payload():
+    from kv_scout.config import from_dict, to_dict
+
+    for cfg in (ModelConfig(), proxy_config(), proxy_config(use_moe=True, use_gdn=True)):
+        payload = to_dict(cfg)
+        restored = from_dict(ModelConfig, payload)
+        assert restored == cfg
+        assert isinstance(restored.tokenizer, type(cfg.tokenizer))
+        assert isinstance(restored.moe, type(cfg.moe))
+        assert restored.attention_anchor_layers == cfg.attention_anchor_layers
+        assert restored.parameter_estimate() == cfg.parameter_estimate()
+
+
+def test_from_dict_ignores_unknown_keys_and_rejects_non_dataclasses():
+    from kv_scout.config import from_dict, to_dict
+
+    payload = to_dict(proxy_config())
+    payload["not_a_field"] = 1
+    assert from_dict(ModelConfig, payload) == proxy_config()
+    with pytest.raises(TypeError):
+        from_dict(dict, {})

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict, is_dataclass
-from typing import Any
+from typing import Any, get_type_hints
 
 
 @dataclass(frozen=True)
@@ -344,13 +344,15 @@ def to_dict(config: Any) -> Any:
 
 
 def from_dict(cls: type, payload: dict) -> Any:
+    if not is_dataclass(cls):
+        raise TypeError("from_dict expects a dataclass type")
+    resolved = get_type_hints(cls)
     kwargs: dict[str, Any] = {}
-    hints = {f.name: f for f in cls.__dataclass_fields__.values()}
     for name, value in payload.items():
-        if name not in hints:
+        if name not in cls.__dataclass_fields__:
             continue
-        target = hints[name].type
-        if isinstance(value, dict) and isinstance(target, type) and is_dataclass(target):
+        target = resolved.get(name)
+        if isinstance(value, dict) and is_dataclass(target):
             kwargs[name] = from_dict(target, value)
         elif isinstance(value, list):
             kwargs[name] = tuple(value)
