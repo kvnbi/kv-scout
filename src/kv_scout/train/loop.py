@@ -17,11 +17,14 @@ from kv_scout.config import (
     DataConfig,
     HarnessModelConfig,
     HarnessRunConfig,
+    ModelConfig,
     OptimConfig,
     TrainConfig,
+    proxy_config,
     to_dict,
 )
 from kv_scout.data.loader import ResumableTokenLoader
+from kv_scout.model import KVScout, language_model_loss
 from kv_scout.train.harness_model import HarnessGPT, loss_with_z
 from kv_scout.train.schedule import wsd_lr
 
@@ -74,10 +77,16 @@ def truncate_loss_log(path: str | Path, last_step: int) -> None:
     os.replace(tmp, path)
 
 
+def build_model(model_cfg, dropout: float):
+    if isinstance(model_cfg, ModelConfig):
+        return KVScout(model_cfg), language_model_loss
+    return HarnessGPT(model_cfg, dropout=dropout), loss_with_z
+
+
 def train(
     out_dir: str | Path,
     data_index: str | Path,
-    model_cfg: HarnessModelConfig,
+    model_cfg: HarnessModelConfig | ModelConfig,
     optim_cfg: OptimConfig,
     data_cfg: DataConfig,
     train_cfg: TrainConfig,
@@ -90,7 +99,8 @@ def train(
 
     seed_everything(train_cfg.seed)
 
-    model = HarnessGPT(model_cfg, dropout=dropout).to(device=device, dtype=dtype)
+    model, loss_fn = build_model(model_cfg, dropout)
+    model = model.to(device=device, dtype=dtype)
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=optim_cfg.peak_lr,
@@ -134,7 +144,7 @@ def train(
 
         inputs, targets = loader.next_batch(device)
         logits = model(inputs)
-        total_loss, cross_entropy = loss_with_z(
+        total_loss, cross_entropy = loss_fn(
             logits, targets, optim_cfg.z_loss_weight
         )
 
@@ -203,14 +213,23 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--batch-size", type=int, default=defaults.data.batch_size)
     parser.add_argument("--vocab-size", type=int, default=defaults.model.vocab_size)
     parser.add_argument("--lr", type=float, default=defaults.optim.peak_lr)
+    parser.add_argument(
+        "--warmup-steps", type=int, default=defaults.optim.warmup_steps
+    )
     parser.add_argument("--dropout", type=float, default=0.1)
     parser.add_argument("--kill-at", type=int, default=None)
+    parser.add_argument("--model", choices=("harness", "proxy"), default="harness")
     args = parser.parse_args(argv)
 
-    model_cfg = replace(
-        defaults.model, vocab_size=args.vocab_size, seq_len=args.seq_len
+    if args.model == "proxy":
+        model_cfg = proxy_config(context_max=args.seq_len, context_min=args.seq_len)
+    else:
+        model_cfg = replace(
+            defaults.model, vocab_size=args.vocab_size, seq_len=args.seq_len
+        )
+    optim_cfg = replace(
+        defaults.optim, peak_lr=args.lr, warmup_steps=args.warmup_steps
     )
-    optim_cfg = replace(defaults.optim, peak_lr=args.lr)
     data_cfg = replace(
         defaults.data,
         seq_len=args.seq_len,

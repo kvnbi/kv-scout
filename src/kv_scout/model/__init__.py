@@ -7,10 +7,13 @@ from kv_scout.model.layers import (
     repeat_kv,
     rope_frequencies,
 )
+from kv_scout.model.transformer import KVScout, language_model_loss
 
 __all__ = [
     "GroupedQueryAttention",
     "TransformerBlock",
+    "KVScout",
+    "language_model_loss",
     "RMSNorm",
     "SwiGLU",
     "apply_rope",
