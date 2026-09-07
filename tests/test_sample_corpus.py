@@ -36,6 +36,12 @@ def test_default_mixture_weights_sum_to_one():
     assert kinds == {"english", "code", "german"}
 
 
+def test_synthetic_share_is_capped_to_protect_voice():
+    by_name = {s.name: s.weight for s in DEFAULT_MIXTURE}
+    assert by_name["english_synthetic"] <= 0.10
+    assert by_name["english_web"] > by_name["english_synthetic"] * 3
+
+
 def test_normalise_dashes():
     assert normalise_dashes("a \u2014 b") == "a, b"
     assert normalise_dashes("1914\u20131918") == "1914-1918"

@@ -45,7 +45,7 @@ class LanguageMix:
 
 @dataclass(frozen=True)
 class MoEConfig:
-    num_experts: int = 32
+    num_experts: int = 12
     top_k: int = 2
     shared_experts: int = 1
     expert_ffn_hidden: int = 1280

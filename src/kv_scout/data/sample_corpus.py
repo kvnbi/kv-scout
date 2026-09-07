@@ -28,7 +28,7 @@ DEFAULT_MIXTURE = (
         config="sample-10BT",
         split="train",
         text_field="text",
-        weight=0.40,
+        weight=0.52,
         kind="english",
     ),
     Source(
@@ -37,7 +37,7 @@ DEFAULT_MIXTURE = (
         config="cosmopedia-v2",
         split="train",
         text_field="text",
-        weight=0.22,
+        weight=0.10,
         kind="english",
     ),
     Source(

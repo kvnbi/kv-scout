@@ -86,11 +86,23 @@ def test_overrides_are_applied_and_validated():
         proxy_config(n_kv_heads=5)
 
 
-def test_full_config_active_params_match_the_spec():
+def test_full_config_matches_the_spec_headline_numbers():
     cfg = ModelConfig()
+    total = cfg.parameter_estimate()
     active = cfg.active_parameter_estimate()
-    assert 1.1e9 < active < 1.35e9
+    assert 1.15e9 < active < 1.30e9
+    assert 3.15e9 < total < 3.45e9
+    assert 6.3 < total * 2 / 1e9 < 6.9
     assert cfg.linear_to_anchor_ratio == pytest.approx(2.5)
+
+
+def test_expert_count_is_the_reconciled_value():
+    from kv_scout.config import MoEConfig
+
+    assert MoEConfig().num_experts == 12
+    assert MoEConfig().top_k == 2
+    assert MoEConfig().shared_experts == 1
+    assert MoEConfig().expert_ffn_hidden == 1280
 
 
 def test_interleave_ratio_is_close_to_the_spec_target():

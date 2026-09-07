@@ -31,7 +31,7 @@ def test_spec_section_two_configuration():
     assert cfg.head_dim == 128
     assert cfg.kv_group_size == 3
     assert cfg.vocab_size == 32768
-    assert cfg.moe.num_experts == 32
+    assert cfg.moe.num_experts == 12
     assert cfg.moe.top_k == 2
     assert cfg.moe.shared_experts == 1
     assert cfg.moe.expert_ffn_hidden == 1280
