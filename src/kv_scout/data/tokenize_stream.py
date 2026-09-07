@@ -7,6 +7,7 @@ import sys
 import time
 from pathlib import Path
 
+from kv_scout.data.normalise import normalise_dashes
 from kv_scout.data.shards import ShardWriter
 
 
@@ -46,6 +47,7 @@ def run(
     shard_tokens: int = 100_000_000,
     batch_docs: int = 1000,
     log_every: int = 100_000_000,
+    normalise: bool = True,
 ) -> int:
     from datasets import load_dataset
     from tokenizers import Tokenizer
@@ -75,6 +77,7 @@ def run(
                 "config": config_name,
                 "split": split,
                 "text_field": text_field,
+                "normalised_dashes": normalise,
             }
         ],
     )
@@ -88,6 +91,8 @@ def run(
         for batch in _batches(stream, batch_docs):
             texts = [_resolve_field(record, text_field) for record in batch]
             texts = [text for text in texts if text]
+            if normalise:
+                texts = [normalise_dashes(text) for text in texts]
             if not texts:
                 continue
             for encoding in tokenizer.encode_batch(texts):
@@ -135,6 +140,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-tokens", type=int, default=None)
     parser.add_argument("--shard-tokens", type=int, default=100_000_000)
     parser.add_argument("--batch-docs", type=int, default=1000)
+    parser.add_argument("--keep-dashes", action="store_true")
     args = parser.parse_args(argv)
 
     run(
@@ -148,6 +154,7 @@ def main(argv: list[str] | None = None) -> int:
         max_tokens=args.max_tokens,
         shard_tokens=args.shard_tokens,
         batch_docs=args.batch_docs,
+        normalise=not args.keep_dashes,
     )
     return 0
 

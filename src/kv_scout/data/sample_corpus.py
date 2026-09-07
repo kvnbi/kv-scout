@@ -3,14 +3,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import sys
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
-EM_DASH = re.compile(r"\s*[\u2014\u2015]\s*")
-EN_DASH_RANGE = re.compile(r"(?<=\d)\s*\u2013\s*(?=\d)")
-EN_DASH = re.compile(r"\s*\u2013\s*")
+from kv_scout.data.normalise import normalise_dashes
 
 
 @dataclass(frozen=True)
@@ -71,12 +68,6 @@ DEFAULT_MIXTURE = (
         kind="german",
     ),
 )
-
-
-def normalise_dashes(text: str) -> str:
-    text = EM_DASH.sub(", ", text)
-    text = EN_DASH_RANGE.sub("-", text)
-    return EN_DASH.sub(", ", text)
 
 
 def sample_source(
