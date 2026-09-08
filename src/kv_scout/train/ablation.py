@@ -71,13 +71,13 @@ def run_variant(
     model_cfg = proxy_config(
         context_max=seq_len, context_min=seq_len, **variant.overrides
     )
-    optim_cfg = replace(
-        OptimConfig(),
-        peak_lr=peak_lr,
-        warmup_steps=max(1, int(steps * warmup_fraction)),
-        matrix_optimizer="adamw",
-        **variant.optim_overrides,
-    )
+    optim_fields = {
+        "peak_lr": peak_lr,
+        "warmup_steps": max(1, int(steps * warmup_fraction)),
+        "matrix_optimizer": "adamw",
+    }
+    optim_fields.update(variant.optim_overrides)
+    optim_cfg = replace(OptimConfig(), **optim_fields)
     data_cfg = DataConfig(seq_len=seq_len, batch_size=batch_size, seed=seed)
     train_cfg = TrainConfig(
         steps=steps,

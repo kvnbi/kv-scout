@@ -217,6 +217,8 @@ class OptimConfig:
     matrix_optimizer: str = "normuon"
     vector_optimizer: str = "adamw"
     newton_schulz_steps: int = 7
+    newton_schulz_dtype: str = "bfloat16"
+    matrix_lr_multiplier: float = 30.0
     peak_lr: float = 3e-3
     min_lr_fraction: float = 0.0
     weight_decay: float = 0.1

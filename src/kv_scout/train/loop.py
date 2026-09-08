@@ -25,6 +25,7 @@ from kv_scout.config import (
 )
 from kv_scout.data.loader import ResumableTokenLoader
 from kv_scout.model import KVScout, language_model_loss
+from kv_scout.train.normuon import build_optimizer
 from kv_scout.train.harness_model import HarnessGPT, loss_with_z
 from kv_scout.train.schedule import wsd_lr
 
@@ -101,13 +102,7 @@ def train(
 
     model, loss_fn = build_model(model_cfg, dropout)
     model = model.to(device=device, dtype=dtype)
-    optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=optim_cfg.peak_lr,
-        betas=optim_cfg.betas,
-        eps=optim_cfg.eps,
-        weight_decay=optim_cfg.weight_decay,
-    )
+    optimizer = build_optimizer(model, optim_cfg)
     loader = ResumableTokenLoader(
         index=data_index,
         seq_len=data_cfg.seq_len,
@@ -140,7 +135,7 @@ def train(
     for step in range(start_step + 1, train_cfg.steps + 1):
         lr = wsd_lr(step - 1, train_cfg.steps, optim_cfg)
         for group in optimizer.param_groups:
-            group["lr"] = lr
+            group["lr"] = lr * group.get("lr_scale", 1.0)
 
         inputs, targets = loader.next_batch(device)
         logits = model(inputs)
