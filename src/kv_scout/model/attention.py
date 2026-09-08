@@ -7,6 +7,8 @@ import torch.nn.functional as F
 from kv_scout.config import ModelConfig
 from kv_scout.model.layers import RMSNorm, apply_rope, repeat_kv
 
+GATE_OPEN_BIAS = 3.0
+
 
 class GroupedQueryAttention(nn.Module):
     def __init__(self, cfg: ModelConfig, layer: int = 1) -> None:
@@ -34,6 +36,13 @@ class GroupedQueryAttention(nn.Module):
             self.value_mix = nn.Parameter(torch.zeros(1))
         else:
             self.value_mix = None
+
+        if cfg.per_head_gated_attention:
+            self.head_gate = nn.Linear(cfg.d_model, cfg.n_query_heads, bias=True)
+            nn.init.zeros_(self.head_gate.weight)
+            nn.init.constant_(self.head_gate.bias, GATE_OPEN_BIAS)
+        else:
+            self.head_gate = None
 
     def forward(
         self,
@@ -67,5 +76,10 @@ class GroupedQueryAttention(nn.Module):
         v = repeat_kv(v, self.groups)
 
         out = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+
+        if self.head_gate is not None:
+            gate = torch.sigmoid(self.head_gate(x)).to(out.dtype)
+            out = out * gate.transpose(1, 2).unsqueeze(-1)
+
         out = out.transpose(1, 2).reshape(b, t, self.n_query_heads * self.head_dim)
         return self.o_proj(out), source

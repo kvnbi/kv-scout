@@ -156,6 +156,8 @@ class ModelConfig:
                 attention += 2 * self.head_dim
             if self.normalized_value_residual and layer > 1:
                 attention += 1
+            if self.per_head_gated_attention:
+                attention += d * self.n_query_heads + self.n_query_heads
             if self.layer_kind(layer) == "dense" or not self.use_moe:
                 ffn = 3 * d * self.ffn_hidden(layer)
             else:
