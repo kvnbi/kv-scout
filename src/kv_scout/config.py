@@ -152,6 +152,8 @@ class ModelConfig:
         for layer in range(1, self.n_layers + 1):
             kv = self.n_kv_heads * self.head_dim
             attention = d * d + 2 * d * kv + d * d
+            if self.qk_norm:
+                attention += 2 * self.head_dim
             if self.layer_kind(layer) == "dense" or not self.use_moe:
                 ffn = 3 * d * self.ffn_hidden(layer)
             else:

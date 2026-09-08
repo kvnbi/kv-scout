@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from kv_scout.config import ModelConfig
-from kv_scout.model.layers import apply_rope, repeat_kv
+from kv_scout.model.layers import RMSNorm, apply_rope, repeat_kv
 
 
 class GroupedQueryAttention(nn.Module):
@@ -22,6 +22,13 @@ class GroupedQueryAttention(nn.Module):
         self.v_proj = nn.Linear(cfg.d_model, kv_dim, bias=False)
         self.o_proj = nn.Linear(cfg.d_model, cfg.d_model, bias=False)
 
+        if cfg.qk_norm:
+            self.q_norm = RMSNorm(cfg.head_dim, cfg.norm_eps)
+            self.k_norm = RMSNorm(cfg.head_dim, cfg.norm_eps)
+        else:
+            self.q_norm = None
+            self.k_norm = None
+
     def forward(
         self,
         x: torch.Tensor,
@@ -32,6 +39,10 @@ class GroupedQueryAttention(nn.Module):
         q = self.q_proj(x).view(b, t, self.n_query_heads, self.head_dim)
         k = self.k_proj(x).view(b, t, self.n_kv_heads, self.head_dim)
         v = self.v_proj(x).view(b, t, self.n_kv_heads, self.head_dim)
+
+        if self.q_norm is not None:
+            q = self.q_norm(q)
+            k = self.k_norm(k)
 
         q = q.transpose(1, 2)
         k = k.transpose(1, 2)
