@@ -178,9 +178,10 @@ def build_optimizer(model, cfg):
         betas=cfg.betas,
         eps=cfg.eps,
         weight_decay=cfg.weight_decay,
+        cautious=cfg.cautious_weight_decay,
     )
     if cfg.matrix_optimizer == "adamw":
-        optimizer = torch.optim.AdamW(model.parameters(), **vector_kwargs)
+        optimizer = CautiousAdamW(model.parameters(), **vector_kwargs)
         for group in optimizer.param_groups:
             group["lr_scale"] = 1.0
         return optimizer
@@ -199,9 +200,49 @@ def build_optimizer(model, cfg):
         eps=cfg.eps,
         cautious=cfg.cautious_weight_decay,
     )
-    vector = torch.optim.AdamW(vectors, **vector_kwargs)
+    vector = CautiousAdamW(vectors, **vector_kwargs)
     for group in matrix.param_groups:
         group["lr_scale"] = cfg.matrix_lr_multiplier
     for group in vector.param_groups:
         group["lr_scale"] = 1.0
     return CombinedOptimizer(matrix, vector)
+
+
+class CautiousAdamW(torch.optim.AdamW):
+    def __init__(self, params, weight_decay: float = 0.0, cautious: bool = True, **kwargs):
+        super().__init__(params, weight_decay=0.0, **kwargs)
+        for group in self.param_groups:
+            group["decoupled_decay"] = weight_decay
+            group["cautious"] = cautious
+
+    @torch.no_grad()
+    def step(self, closure=None):
+        loss = super().step(closure)
+        for group in self.param_groups:
+            decay = group["decoupled_decay"]
+            if decay <= 0.0:
+                continue
+            for param in group["params"]:
+                if param.grad is None:
+                    continue
+                momentum = self.state[param].get("exp_avg")
+                if momentum is None:
+                    continue
+                if group["cautious"]:
+                    agrees = (momentum * param) > 0
+                    pull = torch.where(agrees, param, torch.zeros_like(param))
+                else:
+                    pull = param
+                param.add_(pull, alpha=-group["lr"] * decay)
+        return loss
+
+    def cautious_fraction(self) -> float:
+        agreeing = total = 0
+        for group in self.param_groups:
+            for param in group["params"]:
+                momentum = self.state[param].get("exp_avg")
+                if momentum is None:
+                    continue
+                agreeing += int(((momentum * param) > 0).sum())
+                total += param.numel()
+        return agreeing / total if total else 0.0
