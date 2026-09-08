@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import torch
 import torch.nn as nn
 
@@ -15,9 +17,12 @@ class TransformerBlock(nn.Module):
         self.kind = cfg.layer_kind(layer)
         self.uses_rope = True
 
-        self.attn_norm = RMSNorm(cfg.d_model, cfg.norm_eps)
+        self.norm_scale = (
+            1.0 / math.sqrt(layer) if cfg.layernorm_scaling else 1.0
+        )
+        self.attn_norm = RMSNorm(cfg.d_model, cfg.norm_eps, self.norm_scale)
         self.attn = GroupedQueryAttention(cfg, layer)
-        self.ffn_norm = RMSNorm(cfg.d_model, cfg.norm_eps)
+        self.ffn_norm = RMSNorm(cfg.d_model, cfg.norm_eps, self.norm_scale)
         self.ffn = SwiGLU(cfg.d_model, cfg.ffn_hidden(layer))
 
     def forward(
