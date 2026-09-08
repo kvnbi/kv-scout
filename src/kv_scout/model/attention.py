@@ -9,8 +9,9 @@ from kv_scout.model.layers import RMSNorm, apply_rope, repeat_kv
 
 
 class GroupedQueryAttention(nn.Module):
-    def __init__(self, cfg: ModelConfig) -> None:
+    def __init__(self, cfg: ModelConfig, layer: int = 1) -> None:
         super().__init__()
+        self.layer = layer
         self.n_query_heads = cfg.n_query_heads
         self.n_kv_heads = cfg.n_kv_heads
         self.head_dim = cfg.head_dim
@@ -29,16 +30,26 @@ class GroupedQueryAttention(nn.Module):
             self.q_norm = None
             self.k_norm = None
 
+        if cfg.normalized_value_residual and layer > 1:
+            self.value_mix = nn.Parameter(torch.zeros(1))
+        else:
+            self.value_mix = None
+
     def forward(
         self,
         x: torch.Tensor,
         cos: torch.Tensor | None = None,
         sin: torch.Tensor | None = None,
-    ) -> torch.Tensor:
+        v_first: torch.Tensor | None = None,
+    ):
         b, t, _ = x.shape
         q = self.q_proj(x).view(b, t, self.n_query_heads, self.head_dim)
         k = self.k_proj(x).view(b, t, self.n_kv_heads, self.head_dim)
         v = self.v_proj(x).view(b, t, self.n_kv_heads, self.head_dim)
+        source = v
+        if self.value_mix is not None and v_first is not None:
+            alpha = torch.sigmoid(self.value_mix).to(v.dtype)
+            v = (1.0 - alpha) * v + alpha * v_first
 
         if self.q_norm is not None:
             q = self.q_norm(q)
@@ -57,4 +68,4 @@ class GroupedQueryAttention(nn.Module):
 
         out = F.scaled_dot_product_attention(q, k, v, is_causal=True)
         out = out.transpose(1, 2).reshape(b, t, self.n_query_heads * self.head_dim)
-        return self.o_proj(out)
+        return self.o_proj(out), source

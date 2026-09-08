@@ -16,7 +16,7 @@ class TransformerBlock(nn.Module):
         self.uses_rope = True
 
         self.attn_norm = RMSNorm(cfg.d_model, cfg.norm_eps)
-        self.attn = GroupedQueryAttention(cfg)
+        self.attn = GroupedQueryAttention(cfg, layer)
         self.ffn_norm = RMSNorm(cfg.d_model, cfg.norm_eps)
         self.ffn = SwiGLU(cfg.d_model, cfg.ffn_hidden(layer))
 
@@ -25,9 +25,11 @@ class TransformerBlock(nn.Module):
         x: torch.Tensor,
         cos: torch.Tensor | None = None,
         sin: torch.Tensor | None = None,
-    ) -> torch.Tensor:
+        v_first: torch.Tensor | None = None,
+    ):
         if not self.uses_rope:
             cos = sin = None
-        x = x + self.attn(self.attn_norm(x), cos, sin)
+        attended, source = self.attn(self.attn_norm(x), cos, sin, v_first)
+        x = x + attended
         x = x + self.ffn(self.ffn_norm(x))
-        return x
+        return x, source

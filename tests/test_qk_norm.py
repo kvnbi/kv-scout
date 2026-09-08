@@ -65,10 +65,10 @@ def test_output_shape_and_causality_are_unchanged(normed):
     x = torch.randn(1, 10, normed.d_model)
     cos, sin = rope_frequencies(normed.head_dim, 10, normed.rope_theta)
     with torch.no_grad():
-        base = attn(x, cos, sin)
+        base, _ = attn(x, cos, sin)
         changed = x.clone()
         changed[:, 6:] += 5.0
-        after = attn(changed, cos, sin)
+        after, _ = attn(changed, cos, sin)
     assert base.shape == x.shape
     assert torch.allclose(base[:, :6], after[:, :6], atol=1e-5)
     assert not torch.allclose(base[:, 6:], after[:, 6:], atol=1e-3)
@@ -77,7 +77,7 @@ def test_output_shape_and_causality_are_unchanged(normed):
 def test_gradients_reach_the_norms(normed):
     attn = Attention(normed)
     cos, sin = rope_frequencies(normed.head_dim, 6, normed.rope_theta)
-    attn(torch.randn(2, 6, normed.d_model), cos, sin).square().mean().backward()
+    attn(torch.randn(2, 6, normed.d_model), cos, sin)[0].square().mean().backward()
     for name in ("q_norm", "k_norm"):
         grad = getattr(attn, name).weight.grad
         assert grad is not None and torch.isfinite(grad).all()

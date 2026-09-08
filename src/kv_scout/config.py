@@ -154,6 +154,8 @@ class ModelConfig:
             attention = d * d + 2 * d * kv + d * d
             if self.qk_norm:
                 attention += 2 * self.head_dim
+            if self.normalized_value_residual and layer > 1:
+                attention += 1
             if self.layer_kind(layer) == "dense" or not self.use_moe:
                 ffn = 3 * d * self.ffn_hidden(layer)
             else:

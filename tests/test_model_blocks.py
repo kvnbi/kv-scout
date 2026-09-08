@@ -93,7 +93,7 @@ def test_repeat_kv_expands_each_head_in_place():
 def test_attention_shape_and_parameter_count(cfg):
     attn = GroupedQueryAttention(cfg)
     x = torch.randn(2, 12, cfg.d_model)
-    assert attn(x).shape == x.shape
+    assert attn(x)[0].shape == x.shape
     kv = cfg.n_kv_heads * cfg.head_dim
     expected = 2 * cfg.d_model * cfg.d_model + 2 * cfg.d_model * kv
     assert sum(p.numel() for p in attn.parameters()) == expected
@@ -106,10 +106,10 @@ def test_attention_is_causal(cfg):
     cos, sin = rope_frequencies(cfg.head_dim, 10, cfg.rope_theta)
 
     with torch.no_grad():
-        base = attn(x, cos, sin)
+        base, _ = attn(x, cos, sin)
         changed = x.clone()
         changed[:, 6:] += 5.0
-        after = attn(changed, cos, sin)
+        after, _ = attn(changed, cos, sin)
 
     assert torch.allclose(base[:, :6], after[:, :6], atol=1e-5)
     assert not torch.allclose(base[:, 6:], after[:, 6:], atol=1e-3)
@@ -117,7 +117,7 @@ def test_attention_is_causal(cfg):
 
 def test_attention_runs_without_rope(cfg):
     attn = GroupedQueryAttention(cfg)
-    assert attn(torch.randn(1, 5, cfg.d_model)).shape == (1, 5, cfg.d_model)
+    assert attn(torch.randn(1, 5, cfg.d_model))[0].shape == (1, 5, cfg.d_model)
 
 
 def test_block_matches_the_config_parameter_estimate(cfg):
@@ -144,10 +144,10 @@ def test_block_is_residual_and_causal(cfg):
     x = torch.randn(1, 9, cfg.d_model)
     cos, sin = rope_frequencies(cfg.head_dim, 9, cfg.rope_theta)
     with torch.no_grad():
-        out = block(x, cos, sin)
+        out, _ = block(x, cos, sin)
         changed = x.clone()
         changed[:, 5:] += 3.0
-        after = block(changed, cos, sin)
+        after, _ = block(changed, cos, sin)
     assert out.shape == x.shape
     assert torch.allclose(out[:, :5], after[:, :5], atol=1e-5)
 
@@ -155,7 +155,7 @@ def test_block_is_residual_and_causal(cfg):
 def test_gradients_reach_every_parameter(cfg):
     block = TransformerBlock(cfg, 3)
     cos, sin = rope_frequencies(cfg.head_dim, 6, cfg.rope_theta)
-    block(torch.randn(2, 6, cfg.d_model), cos, sin).square().mean().backward()
+    block(torch.randn(2, 6, cfg.d_model), cos, sin)[0].square().mean().backward()
     for name, param in block.named_parameters():
         assert param.grad is not None, name
         assert torch.isfinite(param.grad).all(), name

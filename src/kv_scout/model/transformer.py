@@ -64,8 +64,11 @@ class KVScout(nn.Module):
         x = self.embed(tokens)
         cos = self.rope_cos[:length].to(x.dtype)
         sin = self.rope_sin[:length].to(x.dtype)
+        v_first = None
         for block in self.blocks:
-            x = block(x, cos, sin)
+            x, source = block(x, cos, sin, v_first)
+            if v_first is None:
+                v_first = source
         return self.head(self.final_norm(x))
 
 
