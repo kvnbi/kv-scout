@@ -152,6 +152,13 @@ class CombinedOptimizer:
         self.vector.load_state_dict(payload["vector"])
 
 
+def group_by_lr_scale(params: list) -> list[dict]:
+    groups: dict[float, list] = {}
+    for param in params:
+        groups.setdefault(float(getattr(param, "mup_lr_scale", 1.0)), []).append(param)
+    return [{"params": items, "mup_scale": scale} for scale, items in sorted(groups.items())]
+
+
 def split_parameters(model) -> tuple[list, list]:
     matrices, vectors = [], []
     excluded = set()
@@ -181,9 +188,11 @@ def build_optimizer(model, cfg):
         cautious=cfg.cautious_weight_decay,
     )
     if cfg.matrix_optimizer == "adamw":
-        optimizer = CautiousAdamW(model.parameters(), **vector_kwargs)
+        optimizer = CautiousAdamW(
+            group_by_lr_scale(list(model.parameters())), **vector_kwargs
+        )
         for group in optimizer.param_groups:
-            group["lr_scale"] = 1.0
+            group["lr_scale"] = group.get("mup_scale", 1.0)
         return optimizer
 
     if cfg.matrix_optimizer != "normuon":
@@ -191,7 +200,7 @@ def build_optimizer(model, cfg):
 
     matrices, vectors = split_parameters(model)
     matrix = NorMuon(
-        matrices,
+        group_by_lr_scale(matrices),
         lr=cfg.peak_lr * cfg.matrix_lr_multiplier,
         momentum=cfg.betas[0],
         weight_decay=cfg.weight_decay,
@@ -200,11 +209,11 @@ def build_optimizer(model, cfg):
         eps=cfg.eps,
         cautious=cfg.cautious_weight_decay,
     )
-    vector = CautiousAdamW(vectors, **vector_kwargs)
+    vector = CautiousAdamW(group_by_lr_scale(vectors), **vector_kwargs)
     for group in matrix.param_groups:
-        group["lr_scale"] = cfg.matrix_lr_multiplier
+        group["lr_scale"] = cfg.matrix_lr_multiplier * group.get("mup_scale", 1.0)
     for group in vector.param_groups:
-        group["lr_scale"] = 1.0
+        group["lr_scale"] = group.get("mup_scale", 1.0)
     return CombinedOptimizer(matrix, vector)
 
 

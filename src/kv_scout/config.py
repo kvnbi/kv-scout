@@ -82,6 +82,8 @@ class ModelConfig:
     per_head_gated_attention: bool = True
     use_gdn: bool = True
     use_moe: bool = True
+    use_mup: bool = False
+    mup_base_d_model: int = 576
     dense_ffn_hidden: int = 5120
     rope_theta: float = 10000.0
     norm_eps: float = 1e-6
@@ -99,6 +101,8 @@ class ModelConfig:
             raise ValueError("dense_warmup_layers must be smaller than n_layers")
         if self.context_min > self.context_max:
             raise ValueError("context_min must not exceed context_max")
+        if self.mup_base_d_model < 1:
+            raise ValueError("mup_base_d_model must be positive")
         for layer in self.attention_anchor_layers:
             if not 1 <= layer <= self.n_layers:
                 raise ValueError("anchor layer index out of range")
@@ -122,6 +126,18 @@ class ModelConfig:
     @property
     def kv_group_size(self) -> int:
         return self.n_query_heads // self.n_kv_heads
+
+    @property
+    def width_multiplier(self) -> float:
+        if not self.use_mup:
+            return 1.0
+        return self.d_model / self.mup_base_d_model
+
+    @property
+    def attention_scale(self) -> float | None:
+        if not self.use_mup:
+            return None
+        return 1.0 / self.head_dim
 
     @property
     def linear_to_anchor_ratio(self) -> float:

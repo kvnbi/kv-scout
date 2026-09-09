@@ -18,6 +18,7 @@ class GroupedQueryAttention(nn.Module):
         self.n_kv_heads = cfg.n_kv_heads
         self.head_dim = cfg.head_dim
         self.groups = cfg.kv_group_size
+        self.attention_scale = cfg.attention_scale
 
         kv_dim = cfg.n_kv_heads * cfg.head_dim
         self.q_proj = nn.Linear(cfg.d_model, cfg.d_model, bias=False)
@@ -75,7 +76,9 @@ class GroupedQueryAttention(nn.Module):
         k = repeat_kv(k, self.groups)
         v = repeat_kv(v, self.groups)
 
-        out = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+        out = F.scaled_dot_product_attention(
+            q, k, v, is_causal=True, scale=self.attention_scale
+        )
 
         if self.head_gate is not None:
             gate = torch.sigmoid(self.head_gate(x)).to(out.dtype)

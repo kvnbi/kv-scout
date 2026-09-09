@@ -10,6 +10,8 @@ from kv_scout.config import ModelConfig
 from kv_scout.model.block import TransformerBlock
 from kv_scout.model.layers import RMSNorm, rope_frequencies
 
+BASE_INIT_STD = 0.02
+
 
 class KVScout(nn.Module):
     def __init__(self, cfg: ModelConfig) -> None:
@@ -24,20 +26,55 @@ class KVScout(nn.Module):
         if cfg.tie_embeddings:
             self.head.weight = self.embed.weight
 
+        self.readout_divisor = (
+            math.sqrt(cfg.width_multiplier)
+            if cfg.tie_embeddings
+            else cfg.width_multiplier
+        )
+
         cos, sin = rope_frequencies(cfg.head_dim, cfg.context_max, cfg.rope_theta)
         self.register_buffer("rope_cos", cos, persistent=False)
         self.register_buffer("rope_sin", sin, persistent=False)
 
         self.apply(self._init_weights)
+        nn.init.normal_(self.embed.weight, mean=0.0, std=BASE_INIT_STD)
+        if not cfg.tie_embeddings:
+            nn.init.normal_(
+                self.head.weight,
+                mean=0.0,
+                std=BASE_INIT_STD / cfg.width_multiplier,
+            )
         self._scale_residual_projections()
+        self._tag_mup_groups()
 
     def _init_weights(self, module: nn.Module) -> None:
         if isinstance(module, nn.Linear):
-            nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            std = BASE_INIT_STD / math.sqrt(self.cfg.width_multiplier)
+            nn.init.normal_(module.weight, mean=0.0, std=std)
             if module.bias is not None:
                 nn.init.zeros_(module.bias)
         elif isinstance(module, nn.Embedding):
-            nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            nn.init.normal_(module.weight, mean=0.0, std=BASE_INIT_STD)
+
+    def _hidden_parameters(self):
+        for block in self.blocks:
+            for module in (
+                block.attn.q_proj,
+                block.attn.k_proj,
+                block.attn.v_proj,
+                block.attn.o_proj,
+                block.ffn.gate,
+                block.ffn.up,
+                block.ffn.down,
+            ):
+                yield module.weight
+
+    def _tag_mup_groups(self) -> None:
+        scale = 1.0 / self.cfg.width_multiplier
+        for param in self.parameters():
+            param.mup_lr_scale = 1.0
+        for param in self._hidden_parameters():
+            param.mup_lr_scale = scale
 
     def _scale_residual_projections(self) -> None:
         scale = 1.0 / math.sqrt(2 * self.cfg.n_layers)
@@ -69,7 +106,10 @@ class KVScout(nn.Module):
             x, source = block(x, cos, sin, v_first)
             if v_first is None:
                 v_first = source
-        return self.head(self.final_norm(x))
+        logits = self.head(self.final_norm(x))
+        if self.cfg.use_mup:
+            logits = logits / self.readout_divisor
+        return logits
 
 
 def language_model_loss(
