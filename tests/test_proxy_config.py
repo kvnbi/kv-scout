@@ -87,13 +87,21 @@ def test_overrides_are_applied_and_validated():
 
 
 def test_full_config_matches_the_spec_headline_numbers():
-    cfg = ModelConfig()
+    cfg = ModelConfig(gdn_output_gate=False)
     total = cfg.parameter_estimate()
     active = cfg.active_parameter_estimate()
     assert 1.15e9 < active < 1.30e9
-    assert 3.15e9 < total < 3.45e9
-    assert 6.3 < total * 2 / 1e9 < 6.9
+    assert 3.25e9 < total < 3.35e9
+    assert 6.5 < total * 2 / 1e9 < 6.7
     assert cfg.linear_to_anchor_ratio == pytest.approx(2.5)
+
+
+def test_the_gdn_output_gate_costs_one_matrix_per_linear_layer():
+    with_gate = ModelConfig(gdn_output_gate=True)
+    without = ModelConfig(gdn_output_gate=False)
+    extra = with_gate.parameter_estimate() - without.parameter_estimate()
+    assert extra == with_gate.d_model**2 * with_gate.n_linear_layers
+    assert with_gate.active_parameter_estimate() > without.active_parameter_estimate()
 
 
 def test_expert_count_is_the_reconciled_value():

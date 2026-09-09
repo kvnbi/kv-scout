@@ -81,6 +81,7 @@ class ModelConfig:
     layernorm_scaling: bool = True
     per_head_gated_attention: bool = True
     use_gdn: bool = True
+    gdn_output_gate: bool = True
     use_moe: bool = True
     use_mup: bool = False
     mup_base_d_model: int = 576
@@ -167,13 +168,25 @@ class ModelConfig:
         total = embed + d
         for layer in range(1, self.n_layers + 1):
             kv = self.n_kv_heads * self.head_dim
-            attention = d * d + 2 * d * kv + d * d
-            if self.qk_norm:
-                attention += 2 * self.head_dim
-            if self.normalized_value_residual and layer > 1:
-                attention += 1
-            if self.per_head_gated_attention:
-                attention += d * self.n_query_heads + self.n_query_heads
+            if self.layer_kind(layer) == "linear":
+                attention = (
+                    2 * d * d
+                    + 2 * d * kv
+                    + 2 * (d * self.n_query_heads + self.n_query_heads)
+                    + self.head_dim
+                )
+                if self.gdn_output_gate:
+                    attention += d * d
+                if self.normalized_value_residual and layer > 1:
+                    attention += 1
+            else:
+                attention = d * d + 2 * d * kv + d * d
+                if self.qk_norm:
+                    attention += 2 * self.head_dim
+                if self.normalized_value_residual and layer > 1:
+                    attention += 1
+                if self.per_head_gated_attention:
+                    attention += d * self.n_query_heads + self.n_query_heads
             if self.layer_kind(layer) == "dense" or not self.use_moe:
                 ffn = 3 * d * self.ffn_hidden(layer)
             else:

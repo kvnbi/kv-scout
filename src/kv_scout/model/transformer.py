@@ -58,7 +58,7 @@ class KVScout(nn.Module):
 
     def _hidden_parameters(self):
         for block in self.blocks:
-            for module in (
+            modules = [
                 block.attn.q_proj,
                 block.attn.k_proj,
                 block.attn.v_proj,
@@ -66,7 +66,11 @@ class KVScout(nn.Module):
                 block.ffn.gate,
                 block.ffn.up,
                 block.ffn.down,
-            ):
+            ]
+            gate = getattr(block.attn, "gate_proj", None)
+            if gate is not None:
+                modules.append(gate)
+            for module in modules:
                 yield module.weight
 
     def _tag_mup_groups(self) -> None:
