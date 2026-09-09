@@ -8,6 +8,7 @@ import torch.nn.functional as F
 
 from kv_scout.config import ModelConfig
 from kv_scout.model.block import TransformerBlock
+from kv_scout.model.cache import Cache
 from kv_scout.model.layers import RMSNorm, rope_frequencies
 
 BASE_INIT_STD = 0.02
@@ -97,19 +98,27 @@ class KVScout(nn.Module):
             total += param.numel()
         return total
 
-    def forward(self, tokens: torch.Tensor) -> torch.Tensor:
+    def forward(self, tokens: torch.Tensor, cache=None) -> torch.Tensor:
         length = tokens.shape[1]
         if length > self.cfg.context_max:
             raise ValueError("sequence longer than the configured context")
 
+        offset = cache.length if cache is not None else 0
+        if offset + length > self.cfg.context_max:
+            raise ValueError("sequence longer than the configured context")
+
+        store = cache if cache is not None else Cache(self.cfg)
+
         x = self.embed(tokens)
-        cos = self.rope_cos[:length].to(x.dtype)
-        sin = self.rope_sin[:length].to(x.dtype)
+        cos = self.rope_cos[offset : offset + length].to(x.dtype)
+        sin = self.rope_sin[offset : offset + length].to(x.dtype)
         v_first = None
         for block in self.blocks:
-            x, source = block(x, cos, sin, v_first)
+            x, source = block(x, cos, sin, v_first, store)
             if v_first is None:
                 v_first = source
+        if cache is not None:
+            cache.advance(length)
         logits = self.head(self.final_norm(x))
         if self.cfg.use_mup:
             logits = logits / self.readout_divisor

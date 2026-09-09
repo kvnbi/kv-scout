@@ -14,6 +14,8 @@ class GroupedQueryAttention(nn.Module):
     def __init__(self, cfg: ModelConfig, layer: int = 1) -> None:
         super().__init__()
         self.layer = layer
+        self.cache_group = cfg.cache_group(layer) if cfg.caches_keys(layer) else layer
+        self.owns_cache = self.cache_group == layer
         self.n_query_heads = cfg.n_query_heads
         self.n_kv_heads = cfg.n_kv_heads
         self.head_dim = cfg.head_dim
@@ -51,6 +53,7 @@ class GroupedQueryAttention(nn.Module):
         cos: torch.Tensor | None = None,
         sin: torch.Tensor | None = None,
         v_first: torch.Tensor | None = None,
+        cache=None,
     ):
         b, t, _ = x.shape
         q = self.q_proj(x).view(b, t, self.n_query_heads, self.head_dim)
@@ -73,11 +76,18 @@ class GroupedQueryAttention(nn.Module):
             q = apply_rope(q, cos, sin)
             k = apply_rope(k, cos, sin)
 
+        if cache is not None:
+            if self.owns_cache:
+                k, v = cache.append(self.cache_group, k, v)
+            else:
+                k, v = cache.read(self.cache_group)
+
         k = repeat_kv(k, self.groups)
         v = repeat_kv(v, self.groups)
 
+        causal = cache is None or k.shape[2] == q.shape[2]
         out = F.scaled_dot_product_attention(
-            q, k, v, is_causal=True, scale=self.attention_scale
+            q, k, v, is_causal=causal, scale=self.attention_scale
         )
 
         if self.head_gate is not None:

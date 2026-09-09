@@ -37,10 +37,11 @@ class TransformerBlock(nn.Module):
         cos: torch.Tensor | None = None,
         sin: torch.Tensor | None = None,
         v_first: torch.Tensor | None = None,
+        cache=None,
     ):
         if not self.uses_rope:
             cos = sin = None
-        result = self.attn(self.attn_norm(x), cos, sin, v_first)
+        result = self.attn(self.attn_norm(x), cos, sin, v_first, cache)
         attended, source = result[0], result[1]
         x = x + attended
         x = x + self.ffn(self.ffn_norm(x))

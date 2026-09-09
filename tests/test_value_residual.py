@@ -96,9 +96,9 @@ def test_model_feeds_the_first_layer_values_to_every_later_layer(cfg):
     seen = []
     original = model.blocks[3].attn.forward
 
-    def spy(x, cos=None, sin=None, v_first=None):
+    def spy(x, cos=None, sin=None, v_first=None, cache=None):
         seen.append(v_first)
-        return original(x, cos, sin, v_first)
+        return original(x, cos, sin, v_first, cache)
 
     model.blocks[3].attn.forward = spy
     with torch.no_grad():

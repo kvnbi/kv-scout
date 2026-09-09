@@ -86,7 +86,7 @@ class GatedDeltaNet(nn.Module):
         cos: torch.Tensor | None = None,
         sin: torch.Tensor | None = None,
         v_first: torch.Tensor | None = None,
-        state: torch.Tensor | None = None,
+        cache=None,
     ):
         b, t, _ = x.shape
         q = self.q_proj(x).view(b, t, self.n_heads, self.head_dim)
@@ -115,7 +115,10 @@ class GatedDeltaNet(nn.Module):
         decay = torch.sigmoid(self.decay_proj(x)).transpose(1, 2)
         write = torch.sigmoid(self.write_proj(x)).transpose(1, 2)
 
-        out, state = delta_rule_recurrence(q, k, v, decay, write, state)
+        previous = cache.get_state(self.layer) if cache is not None else None
+        out, state = delta_rule_recurrence(q, k, v, decay, write, previous)
+        if cache is not None:
+            cache.set_state(self.layer, state)
         out = self.out_norm(out.to(x.dtype))
         out = out.transpose(1, 2).reshape(b, t, self.n_heads * self.head_dim)
         if self.gate_proj is not None:

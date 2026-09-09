@@ -75,6 +75,7 @@ class ModelConfig:
     rope_on_linear_layers: bool = True
     nope_on_anchor_layers: bool = True
     cross_layer_kv_sharing: bool = True
+    kv_sharing_group_size: int = 2
     attention_sinks: bool = True
     qk_norm: bool = True
     normalized_value_residual: bool = True
@@ -104,6 +105,8 @@ class ModelConfig:
             raise ValueError("context_min must not exceed context_max")
         if self.mup_base_d_model < 1:
             raise ValueError("mup_base_d_model must be positive")
+        if self.kv_sharing_group_size < 1:
+            raise ValueError("kv_sharing_group_size must be at least 1")
         for layer in self.attention_anchor_layers:
             if not 1 <= layer <= self.n_layers:
                 raise ValueError("anchor layer index out of range")
@@ -154,6 +157,31 @@ class ModelConfig:
         if layer in self.attention_anchor_layers:
             return "anchor"
         return "linear" if self.use_gdn else "attention"
+
+    def caches_keys(self, layer: int) -> bool:
+        return self.layer_kind(layer) in ("dense", "anchor", "attention")
+
+    def cache_group(self, layer: int) -> int:
+        if not self.caches_keys(layer):
+            raise ValueError("this layer holds no key value cache")
+        kind = self.layer_kind(layer)
+        if kind != "anchor" or not self.cross_layer_kv_sharing:
+            return layer
+        anchors = list(self.attention_anchor_layers)
+        position = anchors.index(layer)
+        return anchors[position - position % self.kv_sharing_group_size]
+
+    def owns_cache(self, layer: int) -> bool:
+        return self.cache_group(layer) == layer
+
+    @property
+    def cache_group_count(self) -> int:
+        groups = {
+            self.cache_group(i)
+            for i in range(1, self.n_layers + 1)
+            if self.caches_keys(i)
+        }
+        return len(groups)
 
     def ffn_hidden(self, layer: int) -> int:
         if self.layer_kind(layer) == "dense" or not self.use_moe:
