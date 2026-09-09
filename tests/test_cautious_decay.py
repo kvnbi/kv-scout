@@ -215,3 +215,39 @@ def test_weight_decay_survives_in_float32(small):
             optimizer.zero_grad(set_to_none=True)
         norms[decay] = float(model.blocks[1].ffn.gate.weight.detach().norm())
     assert norms[1.0] < norms[0.0]
+
+
+def test_the_trainer_keeps_parameters_in_float32(tmp_path):
+    from dataclasses import replace as dataclass_replace
+
+    from kv_scout.config import DataConfig, TrainConfig
+    from kv_scout.data.synthetic import write_synthetic_corpus
+    from kv_scout.train.loop import train
+
+    index = write_synthetic_corpus(
+        tmp_path / "corpus", n_tokens=60_000, vocab_size=2048, shard_tokens=20_000
+    )
+    cfg = proxy_config(
+        d_model=192, n_layers=3, n_query_heads=2, n_kv_heads=1, head_dim=96,
+        dense_ffn_hidden=384, attention_anchor_layers=(3,),
+        context_max=64, context_min=64,
+    )
+    out = tmp_path / "run"
+    train(
+        out_dir=out,
+        data_index=index.root / "index.json",
+        model_cfg=cfg,
+        optim_cfg=dataclass_replace(
+            OptimConfig(), matrix_optimizer="adamw", peak_lr=3e-4, warmup_steps=2
+        ),
+        data_cfg=DataConfig(seq_len=64, batch_size=2, seed=1),
+        train_cfg=TrainConfig(
+            steps=4, checkpoint_every=4, seed=1, device="cpu",
+            dtype="bfloat16", out_dir=str(out),
+        ),
+        dropout=0.0,
+    )
+    payload = torch.load(out / "step_00000004.pt", map_location="cpu", weights_only=False)
+    assert all(v.dtype == torch.float32 for v in payload["model"].values())
+    assert payload["config"]["parameter_dtype"] == "float32"
+    assert payload["config"]["compute_dtype"] == "bfloat16"

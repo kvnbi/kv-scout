@@ -17,7 +17,7 @@ def wsd_lr(step: int, total_steps: int, cfg: OptimConfig) -> float:
     if cfg.schedule == "constant":
         return cfg.peak_lr
 
-    warmup = min(cfg.warmup_steps, total_steps)
+    warmup = min(cfg.warmup_steps, max(1, total_steps // 10))
     if warmup > 0 and step < warmup:
         return cfg.peak_lr * (step + 1) / warmup
 

@@ -96,12 +96,13 @@ def train(
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     device = resolve_device(train_cfg.device)
-    dtype = getattr(torch, train_cfg.dtype)
+    compute_dtype = getattr(torch, train_cfg.dtype)
+    autocast = compute_dtype != torch.float32
 
     seed_everything(train_cfg.seed)
 
     model, loss_fn = build_model(model_cfg, dropout)
-    model = model.to(device=device, dtype=dtype)
+    model = model.to(device=device)
     optimizer = build_optimizer(model, optim_cfg)
     loader = ResumableTokenLoader(
         index=data_index,
@@ -118,6 +119,8 @@ def train(
         "data": to_dict(data_cfg),
         "train": to_dict(train_cfg),
         "dropout": dropout,
+        "parameter_dtype": "float32",
+        "compute_dtype": train_cfg.dtype,
     }
 
     start_step = ckpt.resume(
@@ -138,7 +141,10 @@ def train(
             group["lr"] = lr * group.get("lr_scale", 1.0)
 
         inputs, targets = loader.next_batch(device)
-        logits = model(inputs)
+        with torch.autocast(
+            device_type=device.type, dtype=compute_dtype, enabled=autocast
+        ):
+            logits = model(inputs)
         total_loss, cross_entropy = loss_fn(
             logits, targets, optim_cfg.z_loss_weight
         )

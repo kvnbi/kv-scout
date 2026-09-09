@@ -195,3 +195,16 @@ def test_wsd_schedule_shape():
     assert wsd_lr(total - 1, total, cfg) == pytest.approx(0.0)
     decay = [wsd_lr(s, total, cfg) for s in range(80, total)]
     assert all(a >= b for a, b in zip(decay, decay[1:]))
+
+
+def test_warmup_never_swallows_the_decay_phase():
+    from kv_scout.train.schedule import wsd_lr
+
+    cfg = OptimConfig()
+    for total in (100, 1000, 20000, 100000):
+        assert wsd_lr(total - 1, total, cfg) == pytest.approx(0.0)
+        peak_reached = any(
+            wsd_lr(step, total, cfg) == pytest.approx(cfg.peak_lr)
+            for step in range(0, total, max(1, total // 50))
+        )
+        assert peak_reached, f"run of {total} steps never reaches peak learning rate"
