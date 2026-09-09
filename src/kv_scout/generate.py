@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 import torch
 
+from kv_scout.model.cache import Cache
+
 EM_DASH = "\u2014"
 EN_DASH = "\u2013"
 HORIZONTAL_BAR = "\u2015"
@@ -114,6 +116,7 @@ class SamplingConfig:
     top_p: float = 0.95
     greedy: bool = False
     seed: int | None = None
+    use_cache: bool = True
 
 
 def _filter(logits: torch.Tensor, top_k: int, top_p: float) -> torch.Tensor:
@@ -141,6 +144,9 @@ def generate(
 ) -> dict:
     model.eval()
     context = getattr(model.cfg, "context_max", getattr(model.cfg, "seq_len", 1024))
+    cache = None
+    if config.use_cache and hasattr(model.cfg, "cache_group"):
+        cache = Cache(model.cfg)
 
     ids = tokenizer.encode(prompt).ids if prompt else []
     if not ids:
@@ -154,10 +160,14 @@ def generate(
     if config.seed is not None:
         rng = torch.Generator(device="cpu").manual_seed(config.seed)
 
+    carry = max(1, context // 2)
+    pending = ids[-context:]
     for _ in range(config.max_new_tokens):
-        window = ids[-context:]
-        tokens = torch.tensor([window], dtype=torch.long, device=device)
-        logits = model(tokens)[0, -1].float()
+        if cache is not None and cache.length + len(pending) > context:
+            cache.reset()
+            pending = ids[-carry:]
+        tokens = torch.tensor([pending], dtype=torch.long, device=device)
+        logits = model(tokens, cache)[0, -1].float() if cache is not None else model(tokens)[0, -1].float()
 
         if ban is not None:
             if int(torch.argmax(logits)) in ban.blocked[state]:
@@ -174,6 +184,7 @@ def generate(
 
         ids.append(nxt)
         generated.append(nxt)
+        pending = [nxt] if cache is not None else ids[-context:]
         if ban is not None:
             state = ban.advance(state, nxt)
 
@@ -182,4 +193,5 @@ def generate(
         "tokens": generated,
         "prompt_tokens": len(ids) - len(generated),
         "ban_events": blocked_events,
+        "cached": cache is not None,
     }

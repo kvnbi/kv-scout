@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -162,3 +163,101 @@ def test_generation_respects_the_token_budget(tok):
 def test_empty_prompt_starts_from_end_of_text(tok):
     out = generate(Puppet([700]), tok, "", SamplingConfig(max_new_tokens=3, greedy=True))
     assert out["prompt_tokens"] == 1
+
+
+def _proxy_model(**overrides):
+    from kv_scout.config import proxy_config
+    from kv_scout.model import KVScout
+
+    base = dict(
+        use_gdn=True, attention_sinks=True, sink_tokens=2, attention_window=16,
+        cross_layer_kv_sharing=True, d_model=192, n_layers=12, n_query_heads=2,
+        n_kv_heads=1, head_dim=96, dense_ffn_hidden=384,
+        attention_anchor_layers=(6, 9, 12), context_max=128, context_min=128,
+    )
+    base.update(overrides)
+    torch.manual_seed(0)
+    return KVScout(proxy_config(**base)).eval()
+
+
+def test_cached_generation_matches_uncached(tok):
+    model = _proxy_model()
+    settings = SamplingConfig(max_new_tokens=48, greedy=True)
+    cached = generate(model, tok, "The history of", replace(settings, use_cache=True))
+    plain = generate(model, tok, "The history of", replace(settings, use_cache=False))
+    assert cached["cached"] is True
+    assert plain["cached"] is False
+    assert cached["tokens"] == plain["tokens"]
+
+
+def test_cached_sampling_matches_uncached_under_a_seed(tok):
+    model = _proxy_model()
+    settings = SamplingConfig(max_new_tokens=32, temperature=0.9, seed=5)
+    cached = generate(model, tok, "In 1914", replace(settings, use_cache=True))
+    plain = generate(model, tok, "In 1914", replace(settings, use_cache=False))
+    assert cached["tokens"] == plain["tokens"]
+
+
+def test_caching_survives_a_windowed_anchor(tok):
+    model = _proxy_model(attention_window=8, sink_tokens=2)
+    settings = SamplingConfig(max_new_tokens=40, greedy=True)
+    cached = generate(model, tok, "She said", replace(settings, use_cache=True))
+    plain = generate(model, tok, "She said", replace(settings, use_cache=False))
+    assert cached["tokens"] == plain["tokens"]
+
+
+def test_generation_resets_the_cache_at_the_context_limit(tok):
+    model = _proxy_model(context_max=48, context_min=48)
+    out = generate(
+        model, tok, "The", SamplingConfig(max_new_tokens=80, greedy=True, use_cache=True)
+    )
+    assert len(out["tokens"]) == 80
+
+
+def test_the_dash_ban_still_holds_with_caching(tok, ban):
+    model = _proxy_model()
+    out = generate(
+        model, tok, "The history of",
+        SamplingConfig(max_new_tokens=48, greedy=True, use_cache=True), ban=ban
+    )
+    assert sum(out["text"].count(d) for d in DASHES) == 0
+
+
+def test_a_model_without_cache_support_still_generates(tok):
+    out = generate(
+        Puppet([700]), tok, "x", SamplingConfig(max_new_tokens=6, greedy=True)
+    )
+    assert out["cached"] is False
+    assert out["tokens"] == [700] * 6
+
+
+def test_the_cache_does_not_thrash_past_the_context_limit(tok):
+    import kv_scout.generate as module
+
+    model = _proxy_model(context_max=64, context_min=64)
+    resets = {"count": 0}
+    original = module.Cache.reset
+
+    def counting(self):
+        resets["count"] += 1
+        original(self)
+
+    module.Cache.reset = counting
+    try:
+        out = generate(
+            model, tok, "The history of",
+            SamplingConfig(max_new_tokens=200, greedy=True, use_cache=True),
+        )
+    finally:
+        module.Cache.reset = original
+
+    assert len(out["tokens"]) == 200
+    assert resets["count"] <= 200 // (64 // 2) + 2
+
+
+def test_generation_inside_the_context_is_unaffected_by_the_reset_path(tok):
+    model = _proxy_model(context_max=256, context_min=256)
+    settings = SamplingConfig(max_new_tokens=100, temperature=0.9, seed=7)
+    cached = generate(model, tok, "The history of", replace(settings, use_cache=True))
+    plain = generate(model, tok, "The history of", replace(settings, use_cache=False))
+    assert cached["tokens"] == plain["tokens"]
