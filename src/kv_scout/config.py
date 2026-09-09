@@ -57,6 +57,12 @@ class MoEConfig:
     def __post_init__(self) -> None:
         if self.top_k >= self.num_experts:
             raise ValueError("top_k must be smaller than num_experts")
+        if self.top_k < 1:
+            raise ValueError("top_k must be at least 1")
+        if self.routing not in ("sigmoid", "softmax"):
+            raise ValueError("routing must be one of sigmoid, softmax")
+        if self.expert_ffn_hidden < 1 or self.shared_ffn_hidden < 1:
+            raise ValueError("expert hidden sizes must be positive")
 
 
 @dataclass(frozen=True)
