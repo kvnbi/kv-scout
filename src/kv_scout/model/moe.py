@@ -120,3 +120,36 @@ class ExpertBank(nn.Module):
             out.index_add_(0, tokens, scaled.to(out.dtype))
 
         return out.reshape(shape)
+
+
+class MoEFeedForward(nn.Module):
+    def __init__(self, cfg: ModelConfig) -> None:
+        super().__init__()
+        self.router = Router(cfg)
+        self.experts = ExpertBank(cfg)
+        self.shared = nn.ModuleList(
+            [
+                SwiGLU(cfg.d_model, cfg.moe.shared_ffn_hidden)
+                for _ in range(cfg.moe.shared_experts)
+            ]
+        )
+
+    def output_weights(self):
+        for expert in self.experts.experts:
+            yield expert.down.weight
+        for expert in self.shared:
+            yield expert.down.weight
+
+    def hidden_weights(self):
+        yield self.router.gate.weight
+        for expert in self.experts.experts:
+            yield from (expert.gate.weight, expert.up.weight, expert.down.weight)
+        for expert in self.shared:
+            yield from (expert.gate.weight, expert.up.weight, expert.down.weight)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        weights, indices, _ = self.router(x)
+        out = self.experts(x, weights, indices)
+        for expert in self.shared:
+            out = out + expert(x)
+        return out

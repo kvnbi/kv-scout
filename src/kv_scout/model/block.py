@@ -9,6 +9,7 @@ from kv_scout.config import ModelConfig
 from kv_scout.model.attention import GroupedQueryAttention
 from kv_scout.model.gdn import GatedDeltaNet
 from kv_scout.model.layers import RMSNorm, SwiGLU
+from kv_scout.model.moe import MoEFeedForward
 
 
 class TransformerBlock(nn.Module):
@@ -29,7 +30,12 @@ class TransformerBlock(nn.Module):
             else GroupedQueryAttention(cfg, layer)
         )
         self.ffn_norm = RMSNorm(cfg.d_model, cfg.norm_eps, self.norm_scale)
-        self.ffn = SwiGLU(cfg.d_model, cfg.ffn_hidden(layer))
+        self.uses_moe = cfg.uses_moe(layer)
+        self.ffn = (
+            MoEFeedForward(cfg)
+            if self.uses_moe
+            else SwiGLU(cfg.d_model, cfg.ffn_hidden(layer))
+        )
 
     def forward(
         self,

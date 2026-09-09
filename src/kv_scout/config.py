@@ -69,6 +69,10 @@ class MoEConfig:
             raise ValueError("balance_update_rate must be positive")
         if not 0.0 <= self.load_decay < 1.0:
             raise ValueError("load_decay must lie in [0, 1)")
+        if self.first_moe_layer < 1:
+            raise ValueError("first_moe_layer must be at least 1")
+        if self.shared_experts < 0:
+            raise ValueError("shared_experts must not be negative")
 
 
 @dataclass(frozen=True)
@@ -204,8 +208,13 @@ class ModelConfig:
         }
         return len(groups)
 
+    def uses_moe(self, layer: int) -> bool:
+        if not 1 <= layer <= self.n_layers:
+            raise ValueError("layer index out of range")
+        return self.use_moe and layer >= self.moe.first_moe_layer
+
     def ffn_hidden(self, layer: int) -> int:
-        if self.layer_kind(layer) == "dense" or not self.use_moe:
+        if not self.uses_moe(layer):
             return self.dense_ffn_hidden
         return self.moe.expert_ffn_hidden
 
@@ -236,7 +245,7 @@ class ModelConfig:
                     attention += 1
                 if self.per_head_gated_attention:
                     attention += d * self.n_query_heads + self.n_query_heads
-            if self.layer_kind(layer) == "dense" or not self.use_moe:
+            if not self.uses_moe(layer):
                 ffn = 3 * d * self.ffn_hidden(layer)
             else:
                 experts = self.moe.num_experts * 3 * d * self.moe.expert_ffn_hidden

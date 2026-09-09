@@ -64,15 +64,22 @@ class KVScout(nn.Module):
                 block.attn.k_proj,
                 block.attn.v_proj,
                 block.attn.o_proj,
-                block.ffn.gate,
-                block.ffn.up,
-                block.ffn.down,
             ]
             gate = getattr(block.attn, "gate_proj", None)
             if gate is not None:
                 modules.append(gate)
             for module in modules:
                 yield module.weight
+
+            hidden = getattr(block.ffn, "hidden_weights", None)
+            if hidden is not None:
+                yield from hidden()
+            else:
+                yield from (
+                    block.ffn.gate.weight,
+                    block.ffn.up.weight,
+                    block.ffn.down.weight,
+                )
 
     def _tag_mup_groups(self) -> None:
         scale = 1.0 / self.cfg.width_multiplier
@@ -86,7 +93,12 @@ class KVScout(nn.Module):
         with torch.no_grad():
             for block in self.blocks:
                 block.attn.o_proj.weight.mul_(scale)
-                block.ffn.down.weight.mul_(scale)
+                outputs = getattr(block.ffn, "output_weights", None)
+                if outputs is None:
+                    block.ffn.down.weight.mul_(scale)
+                else:
+                    for weight in outputs():
+                        weight.mul_(scale)
 
     def num_parameters(self, trainable_only: bool = False) -> int:
         seen = set()
