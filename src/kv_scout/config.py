@@ -77,6 +77,8 @@ class ModelConfig:
     cross_layer_kv_sharing: bool = True
     kv_sharing_group_size: int = 2
     attention_sinks: bool = True
+    sink_tokens: int = 3
+    attention_window: int = 1024
     qk_norm: bool = True
     normalized_value_residual: bool = True
     layernorm_scaling: bool = True
@@ -107,6 +109,10 @@ class ModelConfig:
             raise ValueError("mup_base_d_model must be positive")
         if self.kv_sharing_group_size < 1:
             raise ValueError("kv_sharing_group_size must be at least 1")
+        if self.sink_tokens < 0:
+            raise ValueError("sink_tokens must not be negative")
+        if self.attention_window < 1:
+            raise ValueError("attention_window must be at least 1")
         for layer in self.attention_anchor_layers:
             if not 1 <= layer <= self.n_layers:
                 raise ValueError("anchor layer index out of range")
@@ -157,6 +163,9 @@ class ModelConfig:
         if layer in self.attention_anchor_layers:
             return "anchor"
         return "linear" if self.use_gdn else "attention"
+
+    def windows_attention(self, layer: int) -> bool:
+        return self.attention_sinks and self.layer_kind(layer) == "anchor"
 
     def caches_keys(self, layer: int) -> bool:
         return self.layer_kind(layer) in ("dense", "anchor", "attention")

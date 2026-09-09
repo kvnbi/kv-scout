@@ -117,6 +117,7 @@ class KVScout(nn.Module):
             x, source = block(x, cos, sin, v_first, store)
             if v_first is None:
                 v_first = source
+        store.trim()
         if cache is not None:
             cache.advance(length)
         logits = self.head(self.final_norm(x))

@@ -6,6 +6,7 @@ import torch.nn.functional as F
 
 from kv_scout.config import ModelConfig
 from kv_scout.model.layers import RMSNorm, apply_rope, repeat_kv
+from kv_scout.model.sinks import visibility_mask
 
 GATE_OPEN_BIAS = 3.0
 
@@ -16,6 +17,9 @@ class GroupedQueryAttention(nn.Module):
         self.layer = layer
         self.cache_group = cfg.cache_group(layer) if cfg.caches_keys(layer) else layer
         self.owns_cache = self.cache_group == layer
+        self.windowed = cfg.windows_attention(layer)
+        self.sink_tokens = cfg.sink_tokens
+        self.attention_window = cfg.attention_window
         self.n_query_heads = cfg.n_query_heads
         self.n_kv_heads = cfg.n_kv_heads
         self.head_dim = cfg.head_dim
@@ -76,18 +80,27 @@ class GroupedQueryAttention(nn.Module):
             q = apply_rope(q, cos, sin)
             k = apply_rope(k, cos, sin)
 
-        if cache is not None:
-            if self.owns_cache:
-                k, v = cache.append(self.cache_group, k, v)
-            else:
-                k, v = cache.read(self.cache_group)
+        offset = cache.length if cache is not None else 0
+        if cache is None:
+            positions = torch.arange(offset, offset + k.shape[2], device=k.device)
+        elif self.owns_cache:
+            k, v, positions = cache.append(self.cache_group, k, v)
+        else:
+            k, v, positions = cache.read(self.cache_group)
 
         k = repeat_kv(k, self.groups)
         v = repeat_kv(v, self.groups)
 
-        causal = cache is None or k.shape[2] == q.shape[2]
+        mask = None
+        causal = k.shape[2] == q.shape[2]
+        if self.windowed:
+            mask = visibility_mask(
+                positions, t, offset, self.sink_tokens, self.attention_window
+            )
+            causal = False
+
         out = F.scaled_dot_product_attention(
-            q, k, v, is_causal=causal, scale=self.attention_scale
+            q, k, v, attn_mask=mask, is_causal=causal, scale=self.attention_scale
         )
 
         if self.head_gate is not None:
