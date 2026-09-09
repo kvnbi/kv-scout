@@ -81,7 +81,7 @@ class ModelConfig:
     layernorm_scaling: bool = True
     per_head_gated_attention: bool = True
     use_gdn: bool = True
-    gdn_output_gate: bool = True
+    gdn_output_gate: bool = False
     use_moe: bool = True
     use_mup: bool = False
     mup_base_d_model: int = 576

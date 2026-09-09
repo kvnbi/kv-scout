@@ -87,7 +87,7 @@ def test_overrides_are_applied_and_validated():
 
 
 def test_full_config_matches_the_spec_headline_numbers():
-    cfg = ModelConfig(gdn_output_gate=False)
+    cfg = ModelConfig()
     total = cfg.parameter_estimate()
     active = cfg.active_parameter_estimate()
     assert 1.15e9 < active < 1.30e9
