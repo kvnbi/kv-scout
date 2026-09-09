@@ -1,7 +1,7 @@
 from kv_scout.model.attention import GroupedQueryAttention
 from kv_scout.model.block import TransformerBlock
 from kv_scout.model.cache import Cache
-from kv_scout.model.moe import Router
+from kv_scout.model.moe import ExpertBank, Router
 from kv_scout.model.layers import (
     RMSNorm,
     SwiGLU,
@@ -16,6 +16,7 @@ __all__ = [
     "TransformerBlock",
     "Cache",
     "Router",
+    "ExpertBank",
     "KVScout",
     "language_model_loss",
     "RMSNorm",

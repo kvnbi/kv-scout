@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from kv_scout.config import ModelConfig
+from kv_scout.model.layers import SwiGLU
 
 WEIGHT_EPS = 1e-9
 
@@ -85,3 +86,37 @@ class Router(nn.Module):
         from kv_scout.train.instrument import balance_summary
 
         return balance_summary(self.expert_counts)
+
+
+class ExpertBank(nn.Module):
+    def __init__(self, cfg: ModelConfig) -> None:
+        super().__init__()
+        self.num_experts = cfg.moe.num_experts
+        self.experts = nn.ModuleList(
+            [
+                SwiGLU(cfg.d_model, cfg.moe.expert_ffn_hidden)
+                for _ in range(cfg.moe.num_experts)
+            ]
+        )
+
+    def dense(self, x: torch.Tensor) -> torch.Tensor:
+        return torch.stack([expert(x) for expert in self.experts], dim=-2)
+
+    def forward(
+        self, x: torch.Tensor, weights: torch.Tensor, indices: torch.Tensor
+    ) -> torch.Tensor:
+        shape = x.shape
+        flat = x.reshape(-1, shape[-1])
+        chosen = indices.reshape(-1, indices.shape[-1])
+        share = weights.reshape(-1, weights.shape[-1]).to(x.dtype)
+        out = torch.zeros_like(flat)
+
+        for expert in range(self.num_experts):
+            tokens, slots = (chosen == expert).nonzero(as_tuple=True)
+            if tokens.numel() == 0:
+                continue
+            computed = self.experts[expert](flat.index_select(0, tokens))
+            scaled = computed * share[tokens, slots].unsqueeze(-1)
+            out.index_add_(0, tokens, scaled.to(out.dtype))
+
+        return out.reshape(shape)
