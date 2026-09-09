@@ -52,6 +52,8 @@ class MoEConfig:
     shared_ffn_hidden: int = 2560
     routing: str = "sigmoid"
     aux_loss_free_balancing: bool = True
+    balance_update_rate: float = 1e-3
+    load_decay: float = 0.99
     first_moe_layer: int = 3
 
     def __post_init__(self) -> None:
@@ -63,6 +65,10 @@ class MoEConfig:
             raise ValueError("routing must be one of sigmoid, softmax")
         if self.expert_ffn_hidden < 1 or self.shared_ffn_hidden < 1:
             raise ValueError("expert hidden sizes must be positive")
+        if self.balance_update_rate <= 0.0:
+            raise ValueError("balance_update_rate must be positive")
+        if not 0.0 <= self.load_decay < 1.0:
+            raise ValueError("load_decay must lie in [0, 1)")
 
 
 @dataclass(frozen=True)

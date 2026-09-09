@@ -54,11 +54,16 @@ def balance_summary(counts) -> dict:
 def collect_router_stats(model) -> list[dict]:
     stats = []
     for name, module in model.named_modules():
-        counts = getattr(module, "expert_counts", None)
+        counts = getattr(module, "recent_load", None)
+        if counts is None:
+            counts = getattr(module, "expert_counts", None)
         if counts is None:
             continue
         summary = balance_summary(counts)
         summary["module"] = name
+        lifetime = getattr(module, "expert_counts", None)
+        if lifetime is not None:
+            summary["assignments"] = int(torch.as_tensor(lifetime).sum())
         stats.append(summary)
     return stats
 
