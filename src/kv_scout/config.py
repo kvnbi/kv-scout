@@ -88,6 +88,7 @@ class ModelConfig:
     context_max: int = 8192
     tie_embeddings: bool = True
     mtp_heads: int = 2
+    mtp_ffn_hidden: int = 1280
     rope_on_linear_layers: bool = True
     nope_on_anchor_layers: bool = True
     cross_layer_kv_sharing: bool = True
@@ -125,6 +126,10 @@ class ModelConfig:
             raise ValueError("mup_base_d_model must be positive")
         if self.kv_sharing_group_size < 1:
             raise ValueError("kv_sharing_group_size must be at least 1")
+        if self.mtp_heads < 0:
+            raise ValueError("mtp_heads must not be negative")
+        if self.mtp_ffn_hidden < 1:
+            raise ValueError("mtp_ffn_hidden must be positive")
         if self.sink_tokens < 0:
             raise ValueError("sink_tokens must not be negative")
         if self.attention_window < 1:
@@ -218,7 +223,7 @@ class ModelConfig:
             return self.dense_ffn_hidden
         return self.moe.expert_ffn_hidden
 
-    def parameter_estimate(self) -> int:
+    def backbone_parameter_estimate(self) -> int:
         d = self.d_model
         embed = self.vocab_size * d
         if not self.tie_embeddings:
@@ -254,9 +259,32 @@ class ModelConfig:
             total += attention + ffn + 2 * d
         return total
 
+    def mtp_parameter_estimate(self) -> int:
+        if self.mtp_heads < 1:
+            return 0
+        d = self.d_model
+        kv = self.n_kv_heads * self.head_dim
+        per_head = (
+            2 * d
+            + 2 * d * d
+            + d * d
+            + 2 * d * kv
+            + d * d
+            + 3 * d * self.mtp_ffn_hidden
+            + 2 * d
+        )
+        if self.qk_norm:
+            per_head += 2 * self.head_dim
+        if self.per_head_gated_attention:
+            per_head += d * self.n_query_heads + self.n_query_heads
+        return per_head * self.mtp_heads
+
+    def parameter_estimate(self) -> int:
+        return self.backbone_parameter_estimate() + self.mtp_parameter_estimate()
+
     def active_parameter_estimate(self) -> int:
         if not self.use_moe:
-            return self.parameter_estimate()
+            return self.backbone_parameter_estimate()
         d = self.d_model
         idle = 0
         for layer in range(1, self.n_layers + 1):
@@ -264,7 +292,7 @@ class ModelConfig:
                 continue
             skipped = self.moe.num_experts - self.moe.top_k
             idle += skipped * 3 * d * self.moe.expert_ffn_hidden
-        return self.parameter_estimate() - idle
+        return self.backbone_parameter_estimate() - idle
 
 
 PROXY_ANCHORS = (6, 9, 12)
@@ -314,6 +342,7 @@ class OptimConfig:
     eps: float = 1e-8
     grad_clip: float = 1.0
     z_loss_weight: float = 1e-4
+    mtp_loss_weight: float = 0.0
     schedule: str = "wsd"
     warmup_steps: int = 2000
     stable_fraction_of_peak: float = 0.55
@@ -328,6 +357,8 @@ class OptimConfig:
             raise ValueError("stable_fraction_of_peak must lie in (0, 1]")
         if self.schedule not in ("wsd", "constant"):
             raise ValueError("schedule must be one of wsd, constant")
+        if self.mtp_loss_weight < 0.0:
+            raise ValueError("mtp_loss_weight must not be negative")
 
 
 @dataclass(frozen=True)

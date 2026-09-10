@@ -10,6 +10,7 @@ from kv_scout.config import ModelConfig
 from kv_scout.model.block import TransformerBlock
 from kv_scout.model.cache import Cache
 from kv_scout.model.layers import RMSNorm, rope_frequencies
+from kv_scout.model.mtp import MTPHead
 
 BASE_INIT_STD = 0.02
 
@@ -23,6 +24,7 @@ class KVScout(nn.Module):
             [TransformerBlock(cfg, layer) for layer in range(1, cfg.n_layers + 1)]
         )
         self.final_norm = RMSNorm(cfg.d_model, cfg.norm_eps)
+        self.mtp = nn.ModuleList([MTPHead(cfg) for _ in range(cfg.mtp_heads)])
         self.head = nn.Linear(cfg.d_model, cfg.vocab_size, bias=False)
         if cfg.tie_embeddings:
             self.head.weight = self.embed.weight
@@ -81,6 +83,9 @@ class KVScout(nn.Module):
                     block.ffn.down.weight,
                 )
 
+        for head in self.mtp:
+            yield from head.hidden_weights()
+
     def _tag_mup_groups(self) -> None:
         scale = 1.0 / self.cfg.width_multiplier
         for param in self.parameters():
@@ -100,6 +105,15 @@ class KVScout(nn.Module):
                     for weight in outputs():
                         weight.mul_(scale)
 
+            head_scale = 1.0 / math.sqrt(2)
+            for head in self.mtp:
+                for weight in head.output_weights():
+                    weight.mul_(head_scale)
+
+    def backbone_parameters(self) -> int:
+        mtp = sum(p.numel() for head in self.mtp for p in head.parameters())
+        return self.num_parameters() - mtp
+
     def num_parameters(self, trainable_only: bool = False) -> int:
         seen = set()
         total = 0
@@ -110,7 +124,34 @@ class KVScout(nn.Module):
             total += param.numel()
         return total
 
-    def forward(self, tokens: torch.Tensor, cache=None) -> torch.Tensor:
+    def readout(self, hidden: torch.Tensor) -> torch.Tensor:
+        logits = self.head(self.final_norm(hidden))
+        if self.cfg.use_mup:
+            logits = logits / self.readout_divisor
+        return logits
+
+    def predict_ahead(
+        self,
+        hidden: torch.Tensor,
+        tokens: torch.Tensor,
+        cos: torch.Tensor,
+        sin: torch.Tensor,
+    ) -> list[torch.Tensor]:
+        predictions = []
+        carried = hidden
+        for depth, head in enumerate(self.mtp, start=1):
+            usable = carried.shape[1] - 1
+            if usable < 1 or depth >= tokens.shape[1]:
+                break
+            following = self.embed(tokens[:, depth : depth + usable])
+            usable = min(usable, following.shape[1])
+            carried = head(
+                carried[:, :usable], following[:, :usable], cos[:usable], sin[:usable]
+            )
+            predictions.append(self.readout(carried))
+        return predictions
+
+    def forward(self, tokens: torch.Tensor, cache=None, predict_ahead: bool = False):
         length = tokens.shape[1]
         if length > self.cfg.context_max:
             raise ValueError("sequence longer than the configured context")
@@ -132,10 +173,11 @@ class KVScout(nn.Module):
         store.trim()
         if cache is not None:
             cache.advance(length)
-        logits = self.head(self.final_norm(x))
-        if self.cfg.use_mup:
-            logits = logits / self.readout_divisor
-        return logits
+
+        logits = self.readout(x)
+        if not predict_ahead or not self.mtp:
+            return logits
+        return logits, self.predict_ahead(x, tokens, cos, sin)
 
 
 def language_model_loss(

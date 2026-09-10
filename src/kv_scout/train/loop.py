@@ -25,6 +25,7 @@ from kv_scout.config import (
 )
 from kv_scout.data.loader import ResumableTokenLoader
 from kv_scout.model import KVScout, language_model_loss
+from kv_scout.model.mtp import multi_token_loss
 from kv_scout.train.normuon import build_optimizer
 from kv_scout.train.harness_model import HarnessGPT, loss_with_z
 from kv_scout.train.schedule import wsd_lr
@@ -141,13 +142,20 @@ def train(
             group["lr"] = lr * group.get("lr_scale", 1.0)
 
         inputs, targets = loader.next_batch(device)
+        wants_mtp = optim_cfg.mtp_loss_weight > 0.0 and getattr(model, "mtp", None)
         with torch.autocast(
             device_type=device.type, dtype=compute_dtype, enabled=autocast
         ):
-            logits = model(inputs)
+            if wants_mtp:
+                logits, ahead = model(inputs, predict_ahead=True)
+            else:
+                logits, ahead = model(inputs), []
         total_loss, cross_entropy = loss_fn(
             logits, targets, optim_cfg.z_loss_weight
         )
+        if ahead:
+            extra, _ = multi_token_loss(ahead, targets, optim_cfg.mtp_loss_weight)
+            total_loss = total_loss + extra
 
         optimizer.zero_grad(set_to_none=True)
         total_loss.backward()

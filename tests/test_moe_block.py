@@ -115,7 +115,7 @@ def test_moe_raises_total_parameters_but_not_active():
 
 def test_the_full_spec_model_still_hits_its_budget():
     cfg = ModelConfig()
-    assert 3.25e9 < cfg.parameter_estimate() < 3.35e9
+    assert 3.25e9 < cfg.backbone_parameter_estimate() < 3.35e9
     assert 1.15e9 < cfg.active_parameter_estimate() < 1.30e9
 
 

@@ -88,7 +88,7 @@ def test_overrides_are_applied_and_validated():
 
 def test_full_config_matches_the_spec_headline_numbers():
     cfg = ModelConfig()
-    total = cfg.parameter_estimate()
+    total = cfg.backbone_parameter_estimate()
     active = cfg.active_parameter_estimate()
     assert 1.15e9 < active < 1.30e9
     assert 3.25e9 < total < 3.35e9
@@ -99,7 +99,10 @@ def test_full_config_matches_the_spec_headline_numbers():
 def test_the_gdn_output_gate_costs_one_matrix_per_linear_layer():
     with_gate = ModelConfig(gdn_output_gate=True)
     without = ModelConfig(gdn_output_gate=False)
-    extra = with_gate.parameter_estimate() - without.parameter_estimate()
+    extra = (
+        with_gate.backbone_parameter_estimate()
+        - without.backbone_parameter_estimate()
+    )
     assert extra == with_gate.d_model**2 * with_gate.n_linear_layers
     assert with_gate.active_parameter_estimate() > without.active_parameter_estimate()
 
