@@ -160,12 +160,8 @@ def generate(
     if config.seed is not None:
         rng = torch.Generator(device="cpu").manual_seed(config.seed)
 
-    carry = max(1, context // 2)
     pending = ids[-context:]
     for _ in range(config.max_new_tokens):
-        if cache is not None and cache.length + len(pending) > context:
-            cache.reset()
-            pending = ids[-carry:]
         tokens = torch.tensor([pending], dtype=torch.long, device=device)
         logits = model(tokens, cache)[0, -1].float() if cache is not None else model(tokens)[0, -1].float()
 
@@ -194,4 +190,5 @@ def generate(
         "prompt_tokens": len(ids) - len(generated),
         "ban_events": blocked_events,
         "cached": cache is not None,
+        "evictions": cache.evictions if cache is not None else 0,
     }

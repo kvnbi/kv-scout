@@ -140,8 +140,28 @@ def test_the_anchor_cache_stops_growing():
         for i in range(40):
             model(torch.randint(0, cfg.vocab_size, (1, 1)), cache)
             sizes.append(int(cache.keys[6].shape[2]))
-    assert max(sizes) == cfg.sink_tokens + cfg.attention_window
-    assert sizes[-1] == sizes[-5]
+    assert cache.budget(6) == cfg.sink_tokens + cfg.attention_window
+    assert max(sizes) < cache.capacity(6)
+    assert max(sizes) >= cache.budget(6)
+    assert max(sizes[20:]) == max(sizes[10:20])
+    assert cache.storage_keys[6].shape[2] == cache.capacity(6)
+
+
+def test_the_extra_slack_is_masked_out_not_attended():
+    cfg = windowed(sinks=2, window=8)
+    model = KVScout(cfg).eval()
+    cache = Cache(cfg)
+    held, live = [], []
+    with torch.no_grad():
+        for _ in range(40):
+            model(torch.randint(0, cfg.vocab_size, (1, 1)), cache)
+            kept = cache.positions[6]
+            seen = visibility_mask(kept, 1, cache.length, *cache.geometry(6))
+            held.append(int(kept.shape[0]))
+            live.append(int(seen[0, 0, 0].sum()))
+    assert max(live) <= cache.budget(6)
+    assert max(held) < cache.capacity(6)
+    assert max(held) > max(live)
 
 
 def test_dense_layers_keep_the_whole_history():

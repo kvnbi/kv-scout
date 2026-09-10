@@ -33,22 +33,37 @@ class SwiGLU(nn.Module):
         return self.down(F.silu(self.gate(x)) * self.up(x))
 
 
-def rope_frequencies(head_dim: int, seq_len: int, theta: float, device=None):
+def inverse_frequencies(head_dim: int, theta: float, device=None) -> torch.Tensor:
     if head_dim % 2 != 0:
         raise ValueError("head_dim must be even for rotary embeddings")
     exponents = torch.arange(0, head_dim, 2, device=device).float() / head_dim
-    inverse = 1.0 / (theta**exponents)
+    return 1.0 / (theta**exponents)
+
+
+def rope_frequencies(head_dim: int, seq_len: int, theta: float, device=None):
+    inverse = inverse_frequencies(head_dim, theta, device)
     positions = torch.arange(seq_len, device=device).float()
     angles = torch.outer(positions, inverse)
     return torch.cos(angles), torch.sin(angles)
 
 
-def apply_rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
+def rope_shift(head_dim: int, shift: int, theta: float, device=None):
+    angles = inverse_frequencies(head_dim, theta, device) * float(shift)
+    return torch.cos(angles), torch.sin(angles)
+
+
+def rotate_rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
     half = x.shape[-1] // 2
     left, right = x[..., :half], x[..., half:]
-    cos = cos[None, None, : x.shape[-2], :]
-    sin = sin[None, None, : x.shape[-2], :]
     return torch.cat([left * cos - right * sin, right * cos + left * sin], dim=-1)
+
+
+def apply_rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
+    return rotate_rope(
+        x,
+        cos[None, None, : x.shape[-2], :],
+        sin[None, None, : x.shape[-2], :],
+    )
 
 
 def repeat_kv(x: torch.Tensor, groups: int) -> torch.Tensor:

@@ -17,7 +17,7 @@ class TransformerBlock(nn.Module):
         super().__init__()
         self.layer = layer
         self.kind = cfg.layer_kind(layer)
-        self.uses_rope = not (cfg.nope_on_anchor_layers and self.kind == "anchor")
+        self.uses_rope = cfg.uses_rope(layer)
 
         self.norm_scale = (
             1.0 / math.sqrt(layer) if cfg.layernorm_scaling else 1.0

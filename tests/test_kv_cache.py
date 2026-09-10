@@ -160,14 +160,36 @@ def test_reading_an_unwritten_group_raises():
         Cache(ModelConfig()).read(99)
 
 
-def test_the_cache_refuses_to_run_past_the_context():
+def test_a_single_call_longer_than_the_context_is_refused():
+    cfg = hybrid(True, attention_anchor_layers=(6, 9, 12), context_max=8, context_min=8)
+    model = KVScout(cfg).eval()
+    with torch.no_grad():
+        with pytest.raises(ValueError):
+            model(torch.randint(0, cfg.vocab_size, (1, 9)), Cache(cfg))
+
+
+def test_the_cache_rolls_past_the_context_instead_of_refusing():
     cfg = hybrid(True, attention_anchor_layers=(6, 9, 12), context_max=8, context_min=8)
     model = KVScout(cfg).eval()
     cache = Cache(cfg)
     with torch.no_grad():
-        model(torch.randint(0, cfg.vocab_size, (1, 6)), cache)
-        with pytest.raises(ValueError):
-            model(torch.randint(0, cfg.vocab_size, (1, 4)), cache)
+        for _ in range(40):
+            model(torch.randint(0, cfg.vocab_size, (1, 1)), cache)
+    assert cache.length == 40
+    assert cache.rebases > 0
+    for group in cache.fill:
+        assert cache.fill[group] <= cache.capacity(group)
+
+
+def test_rolling_keeps_the_rotary_frame_inside_the_table():
+    cfg = hybrid(True, attention_anchor_layers=(6, 9, 12), context_max=8, context_min=8)
+    cache = Cache(cfg)
+    seen = []
+    for step in range(60):
+        seen.append(cache.rebase(1))
+        cache.advance(1)
+    assert max(seen) <= cfg.context_max
+    assert min(seen) >= 0
 
 
 def test_sharing_costs_no_parameters():

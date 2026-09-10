@@ -206,12 +206,13 @@ def test_caching_survives_a_windowed_anchor(tok):
     assert cached["tokens"] == plain["tokens"]
 
 
-def test_generation_resets_the_cache_at_the_context_limit(tok):
+def test_generation_rolls_the_cache_at_the_context_limit(tok):
     model = _proxy_model(context_max=48, context_min=48)
     out = generate(
         model, tok, "The", SamplingConfig(max_new_tokens=80, greedy=True, use_cache=True)
     )
     assert len(out["tokens"]) == 80
+    assert out["evictions"] > 0
 
 
 def test_the_dash_ban_still_holds_with_caching(tok, ban):
@@ -231,7 +232,7 @@ def test_a_model_without_cache_support_still_generates(tok):
     assert out["tokens"] == [700] * 6
 
 
-def test_the_cache_does_not_thrash_past_the_context_limit(tok):
+def test_generation_never_resets_the_cache(tok):
     import kv_scout.generate as module
 
     model = _proxy_model(context_max=64, context_min=64)
@@ -252,7 +253,33 @@ def test_the_cache_does_not_thrash_past_the_context_limit(tok):
         module.Cache.reset = original
 
     assert len(out["tokens"]) == 200
-    assert resets["count"] <= 200 // (64 // 2) + 2
+    assert resets["count"] == 0
+    assert out["evictions"] > 0
+
+
+def test_generation_never_refills_the_cache(tok):
+    from kv_scout.model import KVScout
+
+    model = _proxy_model(context_max=64, context_min=64)
+    widths = []
+    original = KVScout.forward
+
+    def watched(self, tokens, cache=None, predict_ahead=False):
+        widths.append(tokens.shape[1])
+        return original(self, tokens, cache, predict_ahead)
+
+    KVScout.forward = watched
+    try:
+        out = generate(
+            model, tok, "The history of",
+            SamplingConfig(max_new_tokens=200, greedy=True, use_cache=True),
+        )
+    finally:
+        KVScout.forward = original
+
+    assert len(out["tokens"]) == 200
+    assert len(widths) == 200
+    assert set(widths[1:]) == {1}
 
 
 def test_generation_inside_the_context_is_unaffected_by_the_reset_path(tok):

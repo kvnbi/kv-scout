@@ -188,6 +188,9 @@ class ModelConfig:
     def windows_attention(self, layer: int) -> bool:
         return self.attention_sinks and self.layer_kind(layer) == "anchor"
 
+    def uses_rope(self, layer: int) -> bool:
+        return not (self.nope_on_anchor_layers and self.layer_kind(layer) == "anchor")
+
     def caches_keys(self, layer: int) -> bool:
         return self.layer_kind(layer) in ("dense", "anchor", "attention")
 

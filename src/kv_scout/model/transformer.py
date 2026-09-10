@@ -156,22 +156,19 @@ class KVScout(nn.Module):
         if length > self.cfg.context_max:
             raise ValueError("sequence longer than the configured context")
 
-        offset = cache.length if cache is not None else 0
-        if offset + length > self.cfg.context_max:
-            raise ValueError("sequence longer than the configured context")
-
-        store = cache if cache is not None else Cache(self.cfg)
+        base = cache.rebase(length) if cache is not None else 0
+        store = cache if cache is not None else Cache(self.cfg, rolling=False)
 
         x = self.embed(tokens)
-        cos = self.rope_cos[offset : offset + length].to(x.dtype)
-        sin = self.rope_sin[offset : offset + length].to(x.dtype)
+        cos = self.rope_cos[base : base + length].to(x.dtype)
+        sin = self.rope_sin[base : base + length].to(x.dtype)
         v_first = None
         for block in self.blocks:
             x, source = block(x, cos, sin, v_first, store)
             if v_first is None:
                 v_first = source
-        store.trim()
         if cache is not None:
+            cache.trim()
             cache.advance(length)
 
         logits = self.readout(x)

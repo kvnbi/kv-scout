@@ -80,23 +80,26 @@ class GroupedQueryAttention(nn.Module):
             q = apply_rope(q, cos, sin)
             k = apply_rope(k, cos, sin)
 
-        offset = cache.length if cache is not None else 0
         if cache is None:
-            positions = torch.arange(offset, offset + k.shape[2], device=k.device)
-        elif self.owns_cache:
-            k, v, positions = cache.append(self.cache_group, k, v)
+            offset = 0
+            positions = torch.arange(0, k.shape[2], device=k.device)
+            sinks, window = self.sink_tokens, self.attention_window
         else:
-            k, v, positions = cache.read(self.cache_group)
+            group = self.cache_group
+            offset = cache.length
+            if self.owns_cache:
+                k, v, positions = cache.append(group, k, v)
+            else:
+                k, v, positions = cache.read(group)
+            sinks, window = cache.geometry(group)
 
         k = repeat_kv(k, self.groups)
         v = repeat_kv(v, self.groups)
 
         mask = None
         causal = k.shape[2] == q.shape[2]
-        if self.windowed:
-            mask = visibility_mask(
-                positions, t, offset, self.sink_tokens, self.attention_window
-            )
+        if self.windowed or not causal:
+            mask = visibility_mask(positions, t, offset, sinks, window)
             causal = False
 
         out = F.scaled_dot_product_attention(
