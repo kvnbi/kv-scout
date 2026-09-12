@@ -59,6 +59,8 @@ class Checkpoint:
 
 
 def _fsync_dir(path: Path) -> None:
+    if os.name == "nt":
+        return
     fd = os.open(path, os.O_RDONLY)
     try:
         os.fsync(fd)
