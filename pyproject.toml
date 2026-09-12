@@ -23,6 +23,7 @@ dev = ["pytest>=8.0"]
 kv-scout-tokenize = "kv_scout.data.tokenize_stream:main"
 kv-scout-train = "kv_scout.train.loop:main"
 kv-scout-ema = "kv_scout.train.ema:main"
+kv-scout-ablate = "kv_scout.train.ablation:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

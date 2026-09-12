@@ -85,6 +85,46 @@ def build_model(model_cfg, dropout: float):
     return HarnessGPT(model_cfg, dropout=dropout), loss_with_z
 
 
+def freeze_parameters(model, patterns: tuple[str, ...]) -> list[str]:
+    frozen = []
+    for name, param in model.named_parameters():
+        if any(pattern in name for pattern in patterns):
+            param.requires_grad_(False)
+            frozen.append(name)
+    return frozen
+
+
+@torch.no_grad()
+def evaluate_loss(
+    model,
+    loss_fn,
+    data_index: str | Path,
+    seq_len: int,
+    batch_size: int,
+    device: torch.device,
+    dtype: str,
+    max_tokens: int,
+) -> float:
+    loader = ResumableTokenLoader(
+        index=data_index, seq_len=seq_len, batch_size=batch_size, shuffle=False
+    )
+    compute = getattr(torch, dtype)
+    was_training = model.training
+    model.eval()
+    batches = max(1, max_tokens // (batch_size * seq_len))
+    total = 0.0
+    for _ in range(batches):
+        inputs, targets = loader.next_batch(device)
+        with torch.autocast(
+            device_type=device.type, dtype=compute, enabled=compute != torch.float32
+        ):
+            logits = model(inputs)
+        _, cross_entropy = loss_fn(logits, targets, 0.0)
+        total += float(cross_entropy)
+    model.train(was_training)
+    return total / batches
+
+
 def train(
     out_dir: str | Path,
     data_index: str | Path,
@@ -93,6 +133,7 @@ def train(
     data_cfg: DataConfig,
     train_cfg: TrainConfig,
     dropout: float = 0.1,
+    freeze: tuple[str, ...] = (),
 ) -> int:
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -104,6 +145,7 @@ def train(
 
     model, loss_fn = build_model(model_cfg, dropout)
     model = model.to(device=device)
+    freeze_parameters(model, freeze)
     optimizer = build_optimizer(model, optim_cfg)
     loader = ResumableTokenLoader(
         index=data_index,

@@ -189,7 +189,8 @@ def build_optimizer(model, cfg):
     )
     if cfg.matrix_optimizer == "adamw":
         optimizer = CautiousAdamW(
-            group_by_lr_scale(list(model.parameters())), **vector_kwargs
+            group_by_lr_scale([p for p in model.parameters() if p.requires_grad]),
+            **vector_kwargs,
         )
         for group in optimizer.param_groups:
             group["lr_scale"] = group.get("mup_scale", 1.0)
