@@ -46,10 +46,14 @@ class GroupedQueryAttention(nn.Module):
 
         if cfg.per_head_gated_attention:
             self.head_gate = nn.Linear(cfg.d_model, cfg.n_query_heads, bias=True)
-            nn.init.zeros_(self.head_gate.weight)
-            nn.init.constant_(self.head_gate.bias, GATE_OPEN_BIAS)
         else:
             self.head_gate = None
+        self.preset_parameters()
+
+    def preset_parameters(self) -> None:
+        if self.head_gate is not None:
+            nn.init.zeros_(self.head_gate.weight)
+            nn.init.constant_(self.head_gate.bias, GATE_OPEN_BIAS)
 
     def forward(
         self,

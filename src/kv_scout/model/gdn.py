@@ -72,13 +72,15 @@ class GatedDeltaNet(nn.Module):
         self.out_norm = RMSNorm(cfg.head_dim, cfg.norm_eps)
         self.o_proj = nn.Linear(cfg.d_model, cfg.d_model, bias=False)
 
-        nn.init.constant_(self.decay_proj.bias, DECAY_OPEN_BIAS)
-        nn.init.zeros_(self.write_proj.bias)
-
         if cfg.normalized_value_residual and layer > 1:
             self.value_mix = nn.Parameter(torch.zeros(1))
         else:
             self.value_mix = None
+        self.preset_parameters()
+
+    def preset_parameters(self) -> None:
+        nn.init.constant_(self.decay_proj.bias, DECAY_OPEN_BIAS)
+        nn.init.zeros_(self.write_proj.bias)
 
     def forward(
         self,

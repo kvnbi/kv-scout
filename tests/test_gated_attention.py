@@ -32,6 +32,16 @@ def test_gates_start_almost_open(cfg):
     assert expected > 0.95
 
 
+def test_gates_survive_model_assembly(cfg):
+    torch.manual_seed(0)
+    model = KVScout(proxy_config(per_head_gated_attention=True, mtp_heads=1, mtp_ffn_hidden=128))
+    gates = [m for m in model.modules() if isinstance(m, GroupedQueryAttention)]
+    assert len(gates) > 1
+    for attn in gates:
+        assert torch.equal(attn.head_gate.weight, torch.zeros_like(attn.head_gate.weight))
+        assert torch.equal(attn.head_gate.bias, torch.full_like(attn.head_gate.bias, GATE_OPEN_BIAS))
+
+
 def test_parameter_cost(cfg):
     plain = proxy_config()
     extra = cfg.parameter_estimate() - plain.parameter_estimate()

@@ -40,6 +40,10 @@ class KVScout(nn.Module):
         self.register_buffer("rope_sin", sin, persistent=False)
 
         self.apply(self._init_weights)
+        for module in self.modules():
+            preset = getattr(module, "preset_parameters", None)
+            if preset is not None:
+                preset()
         nn.init.normal_(self.embed.weight, mean=0.0, std=BASE_INIT_STD)
         if not cfg.tie_embeddings:
             nn.init.normal_(

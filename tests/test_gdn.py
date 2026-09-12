@@ -113,6 +113,22 @@ def test_decay_starts_close_to_remembering_everything(cfg):
     assert float(values.min()) > 0.5
 
 
+def test_decay_bias_survives_model_assembly(cfg):
+    import math
+
+    torch.manual_seed(0)
+    model = KVScout(cfg)
+    layers = [m for m in model.modules() if isinstance(m, GatedDeltaNet)]
+    assert layers
+    expected_std = 0.02 / math.sqrt(cfg.width_multiplier)
+    for layer in layers:
+        assert torch.equal(layer.decay_proj.bias, torch.full_like(layer.decay_proj.bias, DECAY_OPEN_BIAS))
+        assert torch.equal(layer.write_proj.bias, torch.zeros_like(layer.write_proj.bias))
+        with torch.no_grad():
+            assert abs(float(layer.decay_proj.weight.std()) - expected_std) < 0.3 * expected_std
+            assert abs(float(layer.write_proj.weight.std()) - expected_std) < 0.3 * expected_std
+
+
 def test_heads_start_with_a_spread_of_memory_timescales(cfg):
     torch.manual_seed(0)
     layer = GatedDeltaNet(cfg, 3)
